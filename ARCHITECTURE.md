@@ -47,21 +47,32 @@ to the app locale so no state-management dependency is added prematurely.
 
 ## Database and offline-first strategy
 
-Drift over SQLite is the planned local database for typed schemas, migrations,
-transactions, and reliable offline operation. Repository interfaces will allow
-an optional remote sync service later without coupling UI to a backend.
-Sensitive backup files will be encrypted before export; credentials and API
-keys will never be stored in source code.
+The local persistence layer uses SQLite through `sqflite`. Open the database
+through `LocalDatabase.open()` and access typed repositories from
+`lib/core/database/database.dart`. The SQLite schema is versioned; schema
+changes require an explicit version increment and migration.
 
-## Major entities
+Sales and purchases are aggregates: each has one or more item rows and header
+totals. Creating or updating a document and replacing its items runs in one
+SQLite transaction. A sale item stores its product ID and name snapshot,
+quantity, selling price, cost price, discount, and total. The stored cost price
+is the historical unit cost at the time of sale; later product price edits do
+not change the recorded sale or its profit inputs. Referenced products cannot
+be hard-deleted while historical items reference them.
 
-`Business`, `UserProfile`, `Product`, `Category`, `Customer`, `Supplier`,
-`Sale`, `SaleItem`, `Purchase`, `PurchaseItem`, `StockMovement`, `Debt`,
-`Expense`, `Payment`, `Currency`, `Notification`, and `BackupMetadata`.
+Money is represented as integer minor units in the active ISO currency
+(`EGP` by default); quantities are decimal values to support fractional units.
+Dates are stored as UTC epoch milliseconds. Generic repositories support
+create, read, update, delete, text search, equality filters, date ranges,
+sorting, and pagination. Search and filter fields are allow-listed per entity.
+The database uses foreign keys, check constraints, and indexes for common
+relationships and date queries. Customer debts are receivables; supplier debts
+are payables. Payments reference exactly one sale, purchase, debt, or expense.
 
-Money is represented as integer minor units with an ISO currency code. EGP is
-the initial currency. Dates are stored in UTC and formatted for the Egypt
-locale/time zone at the presentation boundary.
+Repository APIs are storage boundaries for the feature data layers; screens
+should not query SQLite directly. Remote sync can be introduced later without
+coupling features to a backend. Sensitive backup files must be encrypted before
+export; credentials and API keys must not be stored in source code.
 
 ## Navigation
 
@@ -83,7 +94,8 @@ Current dependencies are intentionally minimal:
 Planned additions when their phases begin:
 
 - `riverpod` / `flutter_riverpod`: feature state management.
-- `drift` and `sqlite3_flutter_libs`: typed offline database.
+- `sqflite` and `path`: versioned local SQLite storage and database paths.
+- `sqflite_common_ffi`: in-memory SQLite tests on desktop/CI.
 - `intl`: currency and Egypt-aware date formatting.
 - `file_picker` and `share_plus`: user-initiated backup/export flows.
 - `flutter_secure_storage`: protected local secrets, only if needed.

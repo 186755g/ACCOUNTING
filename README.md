@@ -10,6 +10,12 @@ switching with RTL support, light and dark themes, and reusable components
 exported from `lib/core/widgets/app_widgets.dart`. Dashboard figures are sample
 content until business data is connected.
 
+Local persistence uses SQLite via `sqflite`. Typed models, the versioned
+schema, and CRUD/search/filter repositories are exported from
+`lib/core/database/database.dart`. Sales and purchases store line items
+transactionally; sale items retain their historical product cost and price
+snapshots.
+
 ## Run and verify
 
 ```sh

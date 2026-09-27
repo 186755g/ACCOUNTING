@@ -1,30 +1,51 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import '../core/database/database.dart';
 import '../core/localization/app_localizations.dart';
 import '../core/theme/app_theme.dart';
+import '../features/account/presentation/account_profile_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
 
 class HesabatiApp extends StatefulWidget {
-  const HesabatiApp({super.key});
+  const HesabatiApp({
+    required this.database,
+    required this.initialSettings,
+    super.key,
+  });
+
+  final LocalDatabase database;
+  final AppSettings initialSettings;
 
   @override
   State<HesabatiApp> createState() => _HesabatiAppState();
 }
 
 class _HesabatiAppState extends State<HesabatiApp> {
-  Locale _locale = const Locale('ar');
-  ThemeMode _themeMode = ThemeMode.light;
+  late AppSettings _settings = widget.initialSettings;
+  late ThemeMode _themeMode = switch (_settings.themeMode) {
+    'light' => ThemeMode.light,
+    'dark' => ThemeMode.dark,
+    _ => ThemeMode.system,
+  };
 
-  void _changeLocale(Locale locale) {
-    setState(() => _locale = locale);
+  Future<void> _changeLocale(Locale locale) async {
+    final updated = _settings.copyWith(localeCode: locale.languageCode);
+    await widget.database.settings.save(updated);
+    if (!mounted) return;
+    setState(() => _settings = updated);
   }
 
   void _toggleTheme() {
     setState(() {
-      _themeMode =
-          _themeMode == ThemeMode.light ? ThemeMode.dark : ThemeMode.light;
+      _themeMode = _themeMode == ThemeMode.dark
+          ? ThemeMode.light
+          : ThemeMode.dark;
     });
+  }
+
+  void _updateSettings(AppSettings settings) {
+    setState(() => _settings = settings);
   }
 
   @override
@@ -32,7 +53,7 @@ class _HesabatiAppState extends State<HesabatiApp> {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       onGenerateTitle: (context) => AppLocalizations.of(context).appName,
-      locale: _locale,
+      locale: Locale(_settings.localeCode),
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: const [
         AppLocalizations.delegate,
@@ -43,10 +64,24 @@ class _HesabatiAppState extends State<HesabatiApp> {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: _themeMode,
-      home: DashboardScreen(
-        isDarkMode: _themeMode == ThemeMode.dark,
-        onLocaleChanged: _changeLocale,
-        onThemeChanged: _toggleTheme,
+      home: Builder(
+        builder: (context) => DashboardScreen(
+          isDarkMode: _themeMode == ThemeMode.dark,
+          settings: _settings,
+          onLocaleChanged: _changeLocale,
+          onThemeChanged: _toggleTheme,
+          onAccountPressed: () {
+            Navigator.of(context).push<void>(
+              MaterialPageRoute(
+                builder: (_) => AccountProfileScreen(
+                  database: widget.database,
+                  initialSettings: _settings,
+                  onSaved: _updateSettings,
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }

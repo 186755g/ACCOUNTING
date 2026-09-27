@@ -1,19 +1,24 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/database/models/app_settings.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/widgets/app_widgets.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
     required this.isDarkMode,
+    required this.settings,
     required this.onLocaleChanged,
     required this.onThemeChanged,
+    required this.onAccountPressed,
     super.key,
   });
 
   final bool isDarkMode;
-  final ValueChanged<Locale> onLocaleChanged;
+  final AppSettings settings;
+  final Future<void> Function(Locale) onLocaleChanged;
   final VoidCallback onThemeChanged;
+  final VoidCallback onAccountPressed;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -69,21 +74,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
             TextButton(
-              onPressed: () => widget.onLocaleChanged(
-                strings.isArabic ? const Locale('en') : const Locale('ar'),
-              ),
+              onPressed: () async => widget.onLocaleChanged(
+                  strings.isArabic ? const Locale('en') : const Locale('ar')),
               child: Text(strings.language),
             ),
-            Padding(
+            IconButton(
+              tooltip: strings.account,
+              onPressed: widget.onAccountPressed,
               padding: const EdgeInsetsDirectional.only(start: 8, end: 20),
-              child: Tooltip(
-                message: strings.account,
-                child: CircleAvatar(
-                  radius: 19,
-                  backgroundColor: Theme.of(context).colorScheme.primary
-                      .withValues(alpha: 0.12),
-                  foregroundColor: Theme.of(context).colorScheme.primary,
-                  child: const Icon(Icons.person_outline_rounded, size: 21),
+              icon: CircleAvatar(
+                radius: 19,
+                backgroundColor: Theme.of(context).colorScheme.primary
+                    .withValues(alpha: 0.12),
+                foregroundColor: Theme.of(context).colorScheme.primary,
+                child: Text(
+                  widget.settings.ownerName.isEmpty
+                      ? '?'
+                      : widget.settings.ownerName.characters.first,
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
                 ),
               ),
             ),

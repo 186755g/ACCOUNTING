@@ -59,6 +59,34 @@ class AppLocalizations {
       isArabic ? 'الإيرادات هذا الشهر' : 'Revenue this month';
   String get viewMode => isArabic ? 'تغيير المظهر' : 'Toggle appearance';
   String get account => isArabic ? 'حساب المتجر' : 'Store account';
+  String get profileTitle => isArabic ? 'ملف النشاط التجاري' : 'Business profile';
+  String get offlineProfileNotice => isArabic
+      ? 'ملفك محفوظ على هذا الجهاز ويعمل دون اتصال بالإنترنت.'
+      : 'Your profile is saved on this device and works offline.';
+  String get businessName => isArabic ? 'اسم النشاط التجاري' : 'Business name';
+  String get ownerName => isArabic ? 'اسم المالك' : 'Owner name';
+  String get phone => isArabic ? 'رقم الهاتف' : 'Phone number';
+  String get currency => isArabic ? 'العملة' : 'Currency';
+  String get languageLabel => isArabic ? 'لغة التطبيق' : 'App language';
+  String get businessType => isArabic ? 'نوع النشاط' : 'Business type';
+  String get save => isArabic ? 'حفظ' : 'Save';
+  String get profileSaved =>
+      isArabic ? 'تم حفظ الملف الشخصي' : 'Profile saved';
+  String get profileSaveFailed => isArabic
+      ? 'تعذر حفظ الملف الشخصي. حاول مرة أخرى.'
+      : 'Could not save the profile. Please try again.';
+  String get egyptianPound => isArabic ? 'جنيه مصري' : 'Egyptian pound';
+  String get usDollar => isArabic ? 'دولار أمريكي' : 'US dollar';
+  String get euro => isArabic ? 'يورو' : 'Euro';
+  String get saudiRiyal => isArabic ? 'ريال سعودي' : 'Saudi riyal';
+  String get uaeDirham => isArabic ? 'درهم إماراتي' : 'UAE dirham';
+  String get arabicLanguage => isArabic ? 'العربية' : 'Arabic';
+  String get englishLanguage => isArabic ? 'الإنجليزية' : 'English';
+  String get retailBusiness => isArabic ? 'متجر تجزئة' : 'Retail';
+  String get groceryBusiness => isArabic ? 'بقالة' : 'Grocery';
+  String get restaurantBusiness => isArabic ? 'مطعم' : 'Restaurant';
+  String get servicesBusiness => isArabic ? 'خدمات' : 'Services';
+  String get otherBusiness => isArabic ? 'أخرى' : 'Other';
   String get demoNotice => isArabic
       ? 'أرقام توضيحية — ستظهر بيانات متجرك بعد إضافة العمليات.'
       : 'Sample figures — your store data will appear as you add activity.';
