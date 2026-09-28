@@ -6,113 +6,102 @@ import 'models/category.dart';
 import 'models/customer.dart';
 import 'models/debt.dart';
 import 'models/expense.dart';
+import 'inventory_repository.dart';
 import 'models/payment.dart';
-import 'models/product.dart';
 import 'models/supplier.dart';
 import 'models/user.dart';
 import 'purchase_repository.dart';
+import 'product_repository.dart';
 import 'sale_repository.dart';
 import 'sqlite_entity_repository.dart';
 
 class LocalDatabase {
   LocalDatabase._(this._database)
-      : categories = SqliteEntityRepository<Category>(
-          _database,
-          table: 'categories',
-          fromMap: Category.fromMap,
-          searchableColumns: const ['name', 'description'],
-          filterableColumns: const {'id', 'is_archived'},
-          dateColumn: 'created_at',
-        ),
-        products = SqliteEntityRepository<Product>(
-          _database,
-          table: 'products',
-          fromMap: Product.fromMap,
-          searchableColumns: const ['name', 'sku', 'description'],
-          filterableColumns: const {
-            'id',
-            'category_id',
-            'sku',
-            'is_active',
-            'stock_quantity',
-          },
-          dateColumn: 'created_at',
-        ),
-        customers = SqliteEntityRepository<Customer>(
-          _database,
-          table: 'customers',
-          fromMap: Customer.fromMap,
-          searchableColumns: const ['name', 'phone', 'email'],
-          filterableColumns: const {'id', 'phone', 'email'},
-          dateColumn: 'created_at',
-        ),
-        suppliers = SqliteEntityRepository<Supplier>(
-          _database,
-          table: 'suppliers',
-          fromMap: Supplier.fromMap,
-          searchableColumns: const ['name', 'phone', 'email'],
-          filterableColumns: const {'id', 'phone', 'email'},
-          dateColumn: 'created_at',
-        ),
-        debts = SqliteEntityRepository<Debt>(
-          _database,
-          table: 'debts',
-          fromMap: Debt.fromMap,
-          searchableColumns: const ['description', 'direction'],
-          filterableColumns: const {
-            'id',
-            'customer_id',
-            'supplier_id',
-            'sale_id',
-            'purchase_id',
-            'direction',
-          },
-          dateColumn: 'due_date',
-        ),
-        expenses = SqliteEntityRepository<Expense>(
-          _database,
-          table: 'expenses',
-          fromMap: Expense.fromMap,
-          searchableColumns: const ['category', 'description', 'notes'],
-          filterableColumns: const {'id', 'user_id', 'category', 'amount_minor'},
-          dateColumn: 'date_at',
-        ),
-        payments = SqliteEntityRepository<Payment>(
-          _database,
-          table: 'payments',
-          fromMap: Payment.fromMap,
-          searchableColumns: const ['method', 'reference', 'notes'],
-          filterableColumns: const {
-            'id',
-            'sale_id',
-            'purchase_id',
-            'debt_id',
-            'expense_id',
-            'user_id',
-            'method',
-            'amount_minor',
-          },
-          dateColumn: 'date_at',
-        ),
-        users = SqliteEntityRepository<User>(
-          _database,
-          table: 'users',
-          fromMap: User.fromMap,
-          searchableColumns: const ['name', 'email', 'role'],
-          filterableColumns: const {'id', 'email', 'role', 'is_active'},
-          dateColumn: 'created_at',
-        ),
-        settings = AppSettingsRepository(_database),
-        sales = SaleRepository(_database),
-        purchases = PurchaseRepository(_database);
+    : categories = SqliteEntityRepository<Category>(
+        _database,
+        table: 'categories',
+        fromMap: Category.fromMap,
+        searchableColumns: const ['name', 'description'],
+        filterableColumns: const {'id', 'is_archived'},
+        dateColumn: 'created_at',
+      ),
+      products = ProductRepository(_database),
+      customers = SqliteEntityRepository<Customer>(
+        _database,
+        table: 'customers',
+        fromMap: Customer.fromMap,
+        searchableColumns: const ['name', 'phone', 'email'],
+        filterableColumns: const {'id', 'phone', 'email'},
+        dateColumn: 'created_at',
+      ),
+      suppliers = SqliteEntityRepository<Supplier>(
+        _database,
+        table: 'suppliers',
+        fromMap: Supplier.fromMap,
+        searchableColumns: const ['name', 'phone', 'email'],
+        filterableColumns: const {'id', 'phone', 'email'},
+        dateColumn: 'created_at',
+      ),
+      debts = SqliteEntityRepository<Debt>(
+        _database,
+        table: 'debts',
+        fromMap: Debt.fromMap,
+        searchableColumns: const ['description', 'direction'],
+        filterableColumns: const {
+          'id',
+          'customer_id',
+          'supplier_id',
+          'sale_id',
+          'purchase_id',
+          'direction',
+        },
+        dateColumn: 'due_date',
+      ),
+      expenses = SqliteEntityRepository<Expense>(
+        _database,
+        table: 'expenses',
+        fromMap: Expense.fromMap,
+        searchableColumns: const ['category', 'description', 'notes'],
+        filterableColumns: const {'id', 'user_id', 'category', 'amount_minor'},
+        dateColumn: 'date_at',
+      ),
+      payments = SqliteEntityRepository<Payment>(
+        _database,
+        table: 'payments',
+        fromMap: Payment.fromMap,
+        searchableColumns: const ['method', 'reference', 'notes'],
+        filterableColumns: const {
+          'id',
+          'sale_id',
+          'purchase_id',
+          'debt_id',
+          'expense_id',
+          'user_id',
+          'method',
+          'amount_minor',
+        },
+        dateColumn: 'date_at',
+      ),
+      users = SqliteEntityRepository<User>(
+        _database,
+        table: 'users',
+        fromMap: User.fromMap,
+        searchableColumns: const ['name', 'email', 'role'],
+        filterableColumns: const {'id', 'email', 'role', 'is_active'},
+        dateColumn: 'created_at',
+      ),
+      settings = AppSettingsRepository(_database),
+      sales = SaleRepository(_database),
+      purchases = PurchaseRepository(_database),
+      inventory = InventoryRepository(_database);
 
-  static const databaseVersion = 2;
+  static const databaseVersion = 4;
   static const databaseName = 'hesabati.db';
 
   final Database _database;
 
   final SqliteEntityRepository<Category> categories;
-  final SqliteEntityRepository<Product> products;
+  final ProductRepository products;
   final SaleRepository sales;
   final PurchaseRepository purchases;
   final SqliteEntityRepository<Customer> customers;
@@ -122,6 +111,7 @@ class LocalDatabase {
   final SqliteEntityRepository<Payment> payments;
   final SqliteEntityRepository<User> users;
   final AppSettingsRepository settings;
+  final InventoryRepository inventory;
 
   static Future<LocalDatabase> open({
     String? databasePath,
@@ -147,8 +137,9 @@ class LocalDatabase {
 
   Future<void> close() => _database.close();
 
-  Future<T> transaction<T>(Future<T> Function(Transaction transaction) action) =>
-      _database.transaction(action);
+  Future<T> transaction<T>(
+    Future<T> Function(Transaction transaction) action,
+  ) => _database.transaction(action);
 
   static Future<void> _upgradeSchema(
     Database database,
@@ -165,6 +156,78 @@ class LocalDatabase {
       await database.execute(
         "ALTER TABLE app_settings ADD COLUMN business_type TEXT NOT NULL DEFAULT 'other'",
       );
+    }
+    if (oldVersion < 3) {
+      await database.execute('ALTER TABLE products ADD COLUMN barcode TEXT');
+      await database.execute(
+        "ALTER TABLE products ADD COLUMN unit TEXT NOT NULL DEFAULT 'piece'",
+      );
+      await database.execute('ALTER TABLE products ADD COLUMN image_path TEXT');
+      await database.execute(
+        'ALTER TABLE products ADD COLUMN minimum_stock REAL NOT NULL DEFAULT 0',
+      );
+      await database.execute(
+        'UPDATE products SET minimum_stock = low_stock_threshold',
+      );
+      await database.execute('''
+        CREATE UNIQUE INDEX idx_products_barcode
+        ON products(barcode COLLATE NOCASE)
+        WHERE barcode IS NOT NULL
+      ''');
+    }
+    if (oldVersion < 4) {
+      await database.execute('PRAGMA defer_foreign_keys = ON');
+      await database.execute('''
+        ALTER TABLE app_settings
+        ADD COLUMN allow_negative_stock INTEGER NOT NULL DEFAULT 0
+        CHECK (allow_negative_stock IN (0, 1))
+      ''');
+      await database.execute('''
+        CREATE TABLE products_new (
+          id TEXT PRIMARY KEY,
+          category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+          sku TEXT COLLATE NOCASE UNIQUE,
+          barcode TEXT COLLATE NOCASE UNIQUE,
+          name TEXT NOT NULL,
+          description TEXT,
+          image_path TEXT,
+          unit TEXT NOT NULL DEFAULT 'piece',
+          cost_price_minor INTEGER NOT NULL CHECK (cost_price_minor >= 0),
+          selling_price_minor INTEGER NOT NULL CHECK (selling_price_minor >= 0),
+          stock_quantity REAL NOT NULL DEFAULT 0,
+          low_stock_threshold REAL NOT NULL DEFAULT 0
+            CHECK (low_stock_threshold >= 0),
+          minimum_stock REAL NOT NULL DEFAULT 0 CHECK (minimum_stock >= 0),
+          is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      ''');
+      await database.execute('''
+        INSERT INTO products_new (
+          id, category_id, sku, barcode, name, description, image_path, unit,
+          cost_price_minor, selling_price_minor, stock_quantity,
+          low_stock_threshold, minimum_stock, is_active, created_at, updated_at
+        )
+        SELECT id, category_id, sku, barcode, name, description, image_path, unit,
+          cost_price_minor, selling_price_minor, stock_quantity,
+          low_stock_threshold, minimum_stock, is_active, created_at, updated_at
+        FROM products
+      ''');
+      await database.execute('DROP TABLE products');
+      await database.execute('ALTER TABLE products_new RENAME TO products');
+      await database.execute('''
+        CREATE INDEX idx_products_category ON products(category_id)
+      ''');
+      await database.execute('''
+        CREATE INDEX idx_products_name ON products(name COLLATE NOCASE)
+      ''');
+      await database.execute('''
+        CREATE UNIQUE INDEX idx_products_barcode
+        ON products(barcode COLLATE NOCASE)
+        WHERE barcode IS NOT NULL
+      ''');
+      await _createInventorySchema(database);
     }
   }
 
@@ -184,12 +247,16 @@ class LocalDatabase {
         id TEXT PRIMARY KEY,
         category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
         sku TEXT COLLATE NOCASE UNIQUE,
+        barcode TEXT COLLATE NOCASE UNIQUE,
         name TEXT NOT NULL,
         description TEXT,
+        image_path TEXT,
+        unit TEXT NOT NULL DEFAULT 'piece',
         cost_price_minor INTEGER NOT NULL CHECK (cost_price_minor >= 0),
         selling_price_minor INTEGER NOT NULL CHECK (selling_price_minor >= 0),
-        stock_quantity REAL NOT NULL DEFAULT 0 CHECK (stock_quantity >= 0),
+        stock_quantity REAL NOT NULL DEFAULT 0,
         low_stock_threshold REAL NOT NULL DEFAULT 0 CHECK (low_stock_threshold >= 0),
+        minimum_stock REAL NOT NULL DEFAULT 0 CHECK (minimum_stock >= 0),
         is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
@@ -291,6 +358,7 @@ class LocalDatabase {
         CHECK (total_minor = ROUND(quantity * cost_price_minor) - discount_minor)
       )
     ''');
+    await _createInventorySchema(database);
     await database.execute('''
       CREATE TABLE debts (
         id TEXT PRIMARY KEY,
@@ -361,6 +429,8 @@ class LocalDatabase {
         business_type TEXT NOT NULL DEFAULT 'other',
         theme_mode TEXT NOT NULL DEFAULT 'system'
           CHECK (theme_mode IN ('system', 'light', 'dark')),
+        allow_negative_stock INTEGER NOT NULL DEFAULT 0
+          CHECK (allow_negative_stock IN (0, 1)),
         updated_at INTEGER NOT NULL
       )
     ''');
@@ -372,6 +442,7 @@ class LocalDatabase {
     for (final statement in const [
       'CREATE INDEX idx_products_category ON products(category_id)',
       'CREATE INDEX idx_products_name ON products(name COLLATE NOCASE)',
+      'CREATE UNIQUE INDEX idx_products_barcode ON products(barcode COLLATE NOCASE) WHERE barcode IS NOT NULL',
       'CREATE INDEX idx_sales_customer ON sales(customer_id)',
       'CREATE INDEX idx_sales_date ON sales(date_at)',
       'CREATE INDEX idx_sale_items_sale ON sale_items(sale_id)',
@@ -391,29 +462,67 @@ class LocalDatabase {
       await database.execute(statement);
     }
   }
+
+  static Future<void> _createInventorySchema(DatabaseExecutor database) async {
+    await database.execute('''
+      CREATE TABLE inventory_history (
+        id TEXT PRIMARY KEY,
+        product_id TEXT NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+        product_name TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        quantity REAL NOT NULL CHECK (quantity != 0),
+        previous_quantity REAL NOT NULL,
+        new_quantity REAL NOT NULL,
+        date_at INTEGER NOT NULL,
+        note TEXT,
+        source_type TEXT,
+        source_id TEXT,
+        CHECK (ABS(previous_quantity + quantity - new_quantity) < 0.000001)
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE product_returns (
+        id TEXT PRIMARY KEY,
+        sale_id TEXT NOT NULL REFERENCES sales(id) ON DELETE RESTRICT,
+        sale_item_id TEXT NOT NULL REFERENCES sale_items(id) ON DELETE RESTRICT,
+        product_id TEXT NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
+        quantity REAL NOT NULL CHECK (quantity > 0),
+        date_at INTEGER NOT NULL,
+        note TEXT
+      )
+    ''');
+    await database.execute('''
+      CREATE INDEX idx_inventory_history_product_date
+      ON inventory_history(product_id, date_at DESC)
+    ''');
+    await database.execute('''
+      CREATE INDEX idx_product_returns_sale_item
+      ON product_returns(sale_item_id)
+    ''');
+  }
 }
 
 class AppSettingsRepository {
   AppSettingsRepository(this._database)
-      : _repository = SqliteEntityRepository<AppSettings>(
-          _database,
-          table: 'app_settings',
-          fromMap: AppSettings.fromMap,
-          searchableColumns: const [
-            'business_name',
-            'owner_name',
-            'phone',
-            'currency_code',
-          ],
-          filterableColumns: const {
-            'id',
-            'currency_code',
-            'locale_code',
-            'business_type',
-            'theme_mode',
-          },
-          dateColumn: 'updated_at',
-        );
+    : _repository = SqliteEntityRepository<AppSettings>(
+        _database,
+        table: 'app_settings',
+        fromMap: AppSettings.fromMap,
+        searchableColumns: const [
+          'business_name',
+          'owner_name',
+          'phone',
+          'currency_code',
+        ],
+        filterableColumns: const {
+          'id',
+          'currency_code',
+          'locale_code',
+          'business_type',
+          'theme_mode',
+        },
+        dateColumn: 'updated_at',
+      );
 
   final Database _database;
   final SqliteEntityRepository<AppSettings> _repository;
@@ -445,14 +554,13 @@ class AppSettingsRepository {
     DateTime? toDate,
     int? limit,
     int offset = 0,
-  }) =>
-      _repository.search(
-        query,
-        filters: filters,
-        fromDate: fromDate,
-        toDate: toDate,
-        limit: limit,
-        offset: offset,
-        orderBy: 'id',
-      );
+  }) => _repository.search(
+    query,
+    filters: filters,
+    fromDate: fromDate,
+    toDate: toDate,
+    limit: limit,
+    offset: offset,
+    orderBy: 'id',
+  );
 }

@@ -33,6 +33,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
   late String _currencyCode = widget.initialSettings.currencyCode;
   late String _localeCode = widget.initialSettings.localeCode;
   late String _businessType = widget.initialSettings.businessType;
+  late bool _allowNegativeStock = widget.initialSettings.allowNegativeStock;
   bool _isSaving = false;
 
   @override
@@ -54,6 +55,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
       currencyCode: _currencyCode,
       localeCode: _localeCode,
       businessType: _businessType,
+      allowNegativeStock: _allowNegativeStock,
     );
     try {
       await widget.database.settings.save(settings);
@@ -202,6 +204,16 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                     onChanged: (value) {
                       if (value != null) setState(() => _localeCode = value);
                     },
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    key: const ValueKey('allow-negative-stock'),
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(strings.allowNegativeStock),
+                    subtitle: Text(strings.allowNegativeStockDescription),
+                    value: _allowNegativeStock,
+                    onChanged: (value) =>
+                        setState(() => _allowNegativeStock = value),
                   ),
                   const SizedBox(height: 24),
                   FilledButton(

@@ -10,6 +10,7 @@ class AppSettings implements DatabaseEntity {
     this.localeCode = 'ar',
     this.businessType = 'other',
     this.themeMode = 'system',
+    this.allowNegativeStock = false,
     DateTime? updatedAt,
   }) : updatedAt = (updatedAt ?? DateTime.now()).toUtc() {
     if (id != '1') throw ArgumentError.value(id, 'id', 'Settings use id "1".');
@@ -42,6 +43,7 @@ class AppSettings implements DatabaseEntity {
   final String localeCode;
   final String businessType;
   final String themeMode;
+  final bool allowNegativeStock;
   final DateTime updatedAt;
 
   AppSettings copyWith({
@@ -52,6 +54,7 @@ class AppSettings implements DatabaseEntity {
     String? localeCode,
     String? businessType,
     String? themeMode,
+    bool? allowNegativeStock,
     DateTime? updatedAt,
   }) =>
       AppSettings(
@@ -63,6 +66,7 @@ class AppSettings implements DatabaseEntity {
         localeCode: localeCode ?? this.localeCode,
         businessType: businessType ?? this.businessType,
         themeMode: themeMode ?? this.themeMode,
+        allowNegativeStock: allowNegativeStock ?? this.allowNegativeStock,
         updatedAt: updatedAt,
       );
 
@@ -76,6 +80,7 @@ class AppSettings implements DatabaseEntity {
         'locale_code': localeCode,
         'business_type': businessType,
         'theme_mode': themeMode,
+        'allow_negative_stock': allowNegativeStock ? 1 : 0,
         'updated_at': dateToDatabase(updatedAt),
       };
 
@@ -88,6 +93,7 @@ class AppSettings implements DatabaseEntity {
         localeCode: requiredString(map, 'locale_code'),
         businessType: requiredString(map, 'business_type'),
         themeMode: requiredString(map, 'theme_mode'),
+        allowNegativeStock: map['allow_negative_stock'] == 1,
         updatedAt: dateFromDatabase(map['updated_at']),
       );
 }

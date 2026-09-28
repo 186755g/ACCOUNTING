@@ -6,6 +6,9 @@ import '../core/localization/app_localizations.dart';
 import '../core/theme/app_theme.dart';
 import '../features/account/presentation/account_profile_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
+import '../features/inventory/presentation/inventory_management_screen.dart';
+import '../features/products/presentation/product_management_screen.dart';
+import '../features/sales/presentation/sales_screen.dart';
 
 class HesabatiApp extends StatefulWidget {
   const HesabatiApp({
@@ -70,6 +73,29 @@ class _HesabatiAppState extends State<HesabatiApp> {
           settings: _settings,
           onLocaleChanged: _changeLocale,
           onThemeChanged: _toggleTheme,
+          onProductsPressed: () {
+            Navigator.of(context).push<void>(
+              MaterialPageRoute(
+                builder: (_) =>
+                    ProductManagementScreen(database: widget.database),
+              ),
+            );
+          },
+          onSalesPressed: () {
+            Navigator.of(context).push<void>(
+              MaterialPageRoute(
+                builder: (_) => SalesScreen(database: widget.database),
+              ),
+            );
+          },
+          onInventoryPressed: () {
+            Navigator.of(context).push<void>(
+              MaterialPageRoute(
+                builder: (_) =>
+                    InventoryManagementScreen(database: widget.database),
+              ),
+            );
+          },
           onAccountPressed: () {
             Navigator.of(context).push<void>(
               MaterialPageRoute(

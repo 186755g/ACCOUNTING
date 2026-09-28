@@ -10,6 +10,9 @@ class DashboardScreen extends StatefulWidget {
     required this.settings,
     required this.onLocaleChanged,
     required this.onThemeChanged,
+    required this.onProductsPressed,
+    required this.onSalesPressed,
+    required this.onInventoryPressed,
     required this.onAccountPressed,
     super.key,
   });
@@ -18,6 +21,9 @@ class DashboardScreen extends StatefulWidget {
   final AppSettings settings;
   final Future<void> Function(Locale) onLocaleChanged;
   final VoidCallback onThemeChanged;
+  final VoidCallback onProductsPressed;
+  final VoidCallback onSalesPressed;
+  final VoidCallback onInventoryPressed;
   final VoidCallback onAccountPressed;
 
   @override
@@ -75,8 +81,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             TextButton(
               onPressed: () async => widget.onLocaleChanged(
-                  strings.isArabic ? const Locale('en') : const Locale('ar')),
+                strings.isArabic ? const Locale('en') : const Locale('ar'),
+              ),
               child: Text(strings.language),
+            ),
+            IconButton(
+              key: const ValueKey('open-products'),
+              tooltip: strings.productsTitle,
+              onPressed: widget.onProductsPressed,
+              icon: const Icon(Icons.inventory_2_outlined),
+            ),
+            IconButton(
+              key: const ValueKey('open-inventory'),
+              tooltip: strings.inventory,
+              onPressed: widget.onInventoryPressed,
+              icon: const Icon(Icons.warehouse_outlined),
+            ),
+            IconButton(
+              key: const ValueKey('open-sales'),
+              tooltip: strings.salesTitle,
+              onPressed: widget.onSalesPressed,
+              icon: const Icon(Icons.point_of_sale_outlined),
             ),
             IconButton(
               tooltip: strings.account,
@@ -91,9 +116,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   widget.settings.ownerName.isEmpty
                       ? '?'
                       : widget.settings.ownerName.characters.first,
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
+                  style: Theme.of(context).textTheme.labelLarge
+                      ?.copyWith(color: Theme.of(context).colorScheme.primary),
                 ),
               ),
             ),

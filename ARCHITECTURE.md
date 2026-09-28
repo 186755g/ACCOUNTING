@@ -1,10 +1,10 @@
-# حساباتي — Technical Architecture (Phase 1)
+# حساباتي — Technical Architecture
 
 ## Scope
 
-Phase 1 establishes the Flutter project, architectural boundaries, localization
-foundation, navigation entry point, and technology decisions. It intentionally
-does not implement sales, inventory, accounting, or other business workflows.
+The application is an Arabic-first, offline-first Flutter app. Implemented
+vertical slices include local account settings, product/category management,
+inventory management, and a point-of-sale flow with payment/debt recording.
 
 ## Folder structure
 
@@ -13,7 +13,7 @@ lib/
   app/                         Application composition and theme
   core/
     localization/              Arabic/English localization
-    database/                   Database connection and migrations (Phase 2)
+    database/                   SQLite connection, models, repositories, migrations
     error/                      Typed failures and user-safe error mapping
     formatting/                 Currency/date formatting by country
     services/                   Cross-feature services
@@ -22,7 +22,9 @@ lib/
       data/                     Dashboard data sources/repositories
       domain/                   Dashboard entities/use cases
       presentation/             Dashboard screens/controllers/widgets
-    products/                   Products and categories
+    products/                   Product and category management
+    inventory/                  Stock adjustments, history, and alerts
+    sales/                      Point of sale and sale detail/receipt view
     sales/                      Sales and returns
     purchases/                  Purchases and stock receiving
     customers/                  Customers and receivables
@@ -34,16 +36,15 @@ lib/
     settings/                   Profile, backup, restore, and preferences
 ```
 
-Each feature follows `presentation -> domain -> data`. Presentation does not
-query the database directly; domain use cases contain business rules; data
-repositories abstract local storage and future remote synchronization.
+The database models and repositories provide typed persistence boundaries.
+Feature presentation currently coordinates local repository operations
+directly; use cases and a shared state-management layer remain future
+refactoring options as workflows expand.
 
 ## State management
 
-The application will use Riverpod when the first stateful business workflow is
-introduced (Phase 3+). Providers will own loading, empty, success, and error
-states and will be disposed at feature boundaries. Phase 1 keeps state limited
-to the app locale so no state-management dependency is added prematurely.
+Implemented screens use local Flutter state. No provider framework or online
+authentication is required for basic offline usage.
 
 ## Database and offline-first strategy
 
@@ -68,6 +69,32 @@ sorting, and pagination. Search and filter fields are allow-listed per entity.
 The database uses foreign keys, check constraints, and indexes for common
 relationships and date queries. Customer debts are receivables; supplier debts
 are payables. Payments reference exactly one sale, purchase, debt, or expense.
+
+Products persist SKU and unique barcode identifiers, category, image path,
+unit, purchase and selling prices, stock and minimum stock, description,
+active status, and UTC creation/update dates. Barcodes are indexed and included
+in local search to provide a stable lookup seam for future scanner integration.
+Deleting a category leaves its products in place with no category; products
+referenced by historical sale or purchase items cannot be hard-deleted.
+
+Inventory movements are persisted with the product/name snapshot, signed
+quantity change, previous and resulting quantities, reason, UTC date, optional
+note, and optional source document. Product opening balances, completed sales,
+received purchases, transaction edits/deletions, sale returns, and manual
+adjustments all update stock and history atomically. Returns are tied to the
+original sale item and cannot exceed its unreturned quantity. Stock cannot fall
+below zero unless the persisted `allow_negative_stock` setting is enabled.
+Active products at or below their minimum stock have low-stock alerts; products
+at zero or below have out-of-stock alerts.
+
+The POS writes completed sales through one repository transaction that also
+deducts inventory, stores payment tender rows, and creates a customer receivable
+for any unpaid balance. The checkout API accepts a list of tenders so mixed
+payments can be expanded without changing the sale schema. The initial UI
+offers cash, card, wallet, or fully unpaid checkout. Sale item price and cost
+snapshots are read from the current product when checkout begins; later product
+edits do not alter historical sale details. Sale details form a readable
+receipt view; device printing and sharing are deferred.
 
 Repository APIs are storage boundaries for the feature data layers; screens
 should not query SQLite directly. Remote sync can be introduced later without

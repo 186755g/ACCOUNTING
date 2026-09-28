@@ -95,6 +95,14 @@ void main() {
     await tester.tap(find.text('الإنجليزية').last);
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('allow-negative-stock')),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('allow-negative-stock')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
       find.byType(FilledButton),
       160,
       scrollable: find.byType(Scrollable).first,
@@ -110,6 +118,7 @@ void main() {
     expect(saved.businessType, 'restaurant');
     expect(saved.currencyCode, 'USD');
     expect(saved.localeCode, 'en');
+    expect(saved.allowNegativeStock, isTrue);
     expect(find.text('Dashboard'), findsOneWidget);
   });
 }

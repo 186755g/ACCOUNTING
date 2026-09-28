@@ -16,6 +16,25 @@ schema, and CRUD/search/filter repositories are exported from
 transactionally; sale items retain their historical product cost and price
 snapshots.
 
+Product and category management runs entirely offline. Products support SKU
+and unique barcode identifiers, categories, image paths, prices, inventory
+thresholds, status, and timestamps. Barcode values are searchable and indexed
+for future scanner integration.
+
+Inventory is updated transactionally when received purchases and completed
+sales are created, edited, or deleted. Sale returns and manual stock
+adjustments are recorded in an inventory history with before/after quantities,
+reason, date, and optional note. The inventory screen surfaces low-stock and
+out-of-stock alerts. Negative stock is blocked by default and can be enabled in
+the business profile settings.
+
+The point-of-sale workflow supports searchable product selection, cart quantity
+changes, order discounts, optional customers, and cash, card, wallet, or unpaid
+checkout. Checkout accepts multiple tenders for mixed-payment expansion; unpaid
+balances create a customer receivable. Sale details show item, payment, and
+cost-at-sale snapshots. Receipt printing/sharing is intentionally left for a
+later phase.
+
 ## Run and verify
 
 ```sh
