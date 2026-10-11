@@ -248,20 +248,24 @@ class FinancialService {
       final debts = await transaction.rawQuery(
         '''
         SELECT
-          COUNT(DISTINCT CASE WHEN balance > 0 THEN customer_id END)
+          COUNT(DISTINCT CASE WHEN direction = 'receivable' AND balance > 0
+            THEN customer_id END)
             AS unpaid_customers,
-          COUNT(DISTINCT CASE WHEN balance > 0 AND due_date < ?
+          COUNT(DISTINCT CASE WHEN direction = 'receivable' AND balance > 0
+            AND due_date < ?
             THEN customer_id END) AS overdue_customers,
-          COUNT(DISTINCT CASE WHEN balance > 0 THEN supplier_id END)
+          COUNT(DISTINCT CASE WHEN direction = 'payable' AND balance > 0
+            THEN supplier_id END)
             AS unpaid_suppliers,
-          COUNT(DISTINCT CASE WHEN balance > 0 AND due_date < ?
+          COUNT(DISTINCT CASE WHEN direction = 'payable' AND balance > 0
+            AND due_date < ?
             THEN supplier_id END) AS overdue_suppliers
         FROM (
           SELECT d.customer_id, d.supplier_id, d.due_date,
+            d.direction,
             MAX(0, d.amount_minor - COALESCE(SUM(p.amount_minor), 0))
               AS balance
           FROM debts d LEFT JOIN payments p ON p.debt_id = d.id
-          WHERE d.direction = 'receivable'
           GROUP BY d.id
         )
         ''',

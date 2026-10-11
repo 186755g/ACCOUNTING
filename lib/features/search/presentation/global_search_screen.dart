@@ -101,7 +101,7 @@ class _GlobalSearchScreenState extends State<GlobalSearchScreen> {
         _searched = true;
       });
     } catch (error) {
-      debugPrint('Global search failed: $error');
+      debugPrint('Global search failed: ${error.runtimeType}');
       if (!mounted) return;
       setState(() {
         _loading = false;

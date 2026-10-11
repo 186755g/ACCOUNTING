@@ -91,4 +91,19 @@ void main() {
       expect(await database.products.getById(product.id), isNotNull);
     },
   );
+
+  test('selects the most recently modified backup', () async {
+    final backupDirectory = Directory(
+      path.join(temporaryDirectory.path, 'documents', 'HesabatiBackups'),
+    );
+    await backupDirectory.create();
+    final storedOlder = File(path.join(backupDirectory.path, 'older.hdb'));
+    final storedNewer = File(path.join(backupDirectory.path, 'newer.hdb'));
+    await storedOlder.writeAsBytes([1]);
+    await storedNewer.writeAsBytes([2]);
+    await storedOlder.setLastModified(DateTime.utc(2026, 1, 1));
+    await storedNewer.setLastModified(DateTime.utc(2026, 1, 2));
+
+    expect((await backups.latestBackup())?.path, storedNewer.path);
+  });
 }

@@ -9,6 +9,7 @@ import '../core/theme/app_theme.dart';
 import '../core/services/local_alert_service.dart';
 import '../features/account/presentation/account_profile_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
+import '../features/expenses/presentation/expense_management_screen.dart';
 import '../features/inventory/presentation/inventory_management_screen.dart';
 import '../features/parties/presentation/party_management_screen.dart';
 import '../features/products/presentation/product_management_screen.dart';
@@ -16,6 +17,7 @@ import '../features/reports/presentation/reports_screen.dart';
 import '../features/search/presentation/global_search_screen.dart';
 import '../features/sales/presentation/sales_screen.dart';
 import '../features/sales/presentation/sale_detail_screen.dart';
+import '../features/sales/presentation/sale_pos_screen.dart';
 
 class HesabatiApp extends StatefulWidget {
   const HesabatiApp({
@@ -95,7 +97,9 @@ class _HesabatiAppState extends State<HesabatiApp> with WidgetsBindingObserver {
     try {
       await _alerts.refresh();
     } catch (error) {
-      debugPrint('Could not refresh local business alerts: $error');
+      debugPrint(
+        'Could not refresh local business alerts: ${error.runtimeType}',
+      );
     }
   }
 
@@ -172,6 +176,13 @@ class _HesabatiAppState extends State<HesabatiApp> with WidgetsBindingObserver {
               ),
             );
           },
+          onNewSalePressed: () {
+            Navigator.of(context).push<void>(
+              MaterialPageRoute(
+                builder: (_) => SalePosScreen(database: _database),
+              ),
+            );
+          },
           onSalesPressed: () {
             Navigator.of(context).push<void>(
               MaterialPageRoute(
@@ -224,6 +235,13 @@ class _HesabatiAppState extends State<HesabatiApp> with WidgetsBindingObserver {
             Navigator.of(context).push<void>(
               MaterialPageRoute(
                 builder: (_) => ReportsScreen(database: _database),
+              ),
+            );
+          },
+          onExpensesPressed: () {
+            Navigator.of(context).push<void>(
+              MaterialPageRoute(
+                builder: (_) => ExpenseManagementScreen(database: _database),
               ),
             );
           },

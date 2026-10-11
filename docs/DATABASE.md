@@ -12,6 +12,10 @@ connection. Application money is stored in integer minor units; quantities
 and inventory snapshots use real-valued quantities. Dates are UTC epoch
 milliseconds.
 
+On Android, the database remains in the app's private storage sandbox and
+platform-managed application backup is disabled. SQLite is not encrypted at
+rest; portable `.hdb` backups are also currently unencrypted.
+
 ## Main tables
 
 | Tables | Purpose |

@@ -25,6 +25,8 @@ class BackupService {
   static const _formatVersion = 1;
   static const _maximumHeaderLength = 4096;
   static const _maximumDatabaseBytes = 1 << 30;
+  static const _maximumBackupBytes =
+      _maximumDatabaseBytes + _maximumHeaderLength + (1 << 20) + 12;
 
   final DatabaseFactory? factory;
   final Future<Directory> Function() _temporaryDirectoryProvider;
@@ -96,11 +98,13 @@ class BackupService {
         .cast<File>()
         .toList();
     if (files.isEmpty) return null;
-    files.sort(
-      (left, right) =>
-          right.statSync().modified.compareTo(left.statSync().modified),
+    final backups = await Future.wait(
+      files.map(
+        (file) async => (file: file, modified: (await file.stat()).modified),
+      ),
     );
-    return files.first;
+    backups.sort((left, right) => right.modified.compareTo(left.modified));
+    return backups.first.file;
   }
 
   Future<LocalDatabase> restoreBackup(
@@ -162,8 +166,8 @@ class BackupService {
       rethrow;
     } on FormatException {
       rethrow;
-    } catch (error) {
-      throw FormatException('Could not restore the selected backup: $error');
+    } catch (_) {
+      throw const FormatException('Could not restore the selected backup.');
     } finally {
       if (await staged.exists()) await staged.delete();
     }
@@ -173,6 +177,9 @@ class BackupService {
     final file = await backup.open();
     try {
       final length = await file.length();
+      if (length > _maximumBackupBytes) {
+        throw const FormatException('Backup file exceeds the supported size.');
+      }
       if (length < 12) throw const FormatException('Backup file is too short.');
       final magic = await file.read(8);
       for (var index = 0; index < _magic.length; index++) {
@@ -197,8 +204,8 @@ class BackupService {
       return decoded;
     } on FormatException {
       rethrow;
-    } catch (error) {
-      throw FormatException('Could not read backup metadata: $error');
+    } catch (_) {
+      throw const FormatException('Could not read backup metadata.');
     } finally {
       await file.close();
     }

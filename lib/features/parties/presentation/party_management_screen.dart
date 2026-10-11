@@ -56,7 +56,7 @@ class _PartyManagementScreenState extends State<PartyManagementScreen> {
         _error = null;
       });
     } catch (error) {
-      debugPrint('Failed to load party accounts: $error');
+      debugPrint('Failed to load party accounts: ${error.runtimeType}');
       if (!mounted || request != _loadRequest) return;
       setState(() {
         _loading = false;
@@ -232,7 +232,10 @@ class _PartyManagementScreenState extends State<PartyManagementScreen> {
           paymentRows.add((payment, strings.transactionPayment));
         }
       }
+      final debtOutstanding = <String, int>{};
       for (final debt in debts) {
+        debtOutstanding[debt.id] = await widget.database.partyAccounts
+            .getOutstandingForDebt(debt.id);
         final payments = await widget.database.payments.getAll(
           filters: {'debt_id': debt.id},
           orderBy: 'date_at',
@@ -306,7 +309,7 @@ class _PartyManagementScreenState extends State<PartyManagementScreen> {
                     ),
                     subtitle: Text(
                       '${strings.outstandingBalance}: '
-                      '${_moneyFromFuture(debt.id)}',
+                      '${_money(debtOutstanding[debt.id]!)}',
                     ),
                     trailing: Text(_money(debt.amountMinor)),
                   ),
@@ -352,18 +355,14 @@ class _PartyManagementScreenState extends State<PartyManagementScreen> {
         ),
       );
     } catch (error) {
-      debugPrint('Failed to load party transaction history: $error');
+      debugPrint(
+        'Failed to load party transaction history: ${error.runtimeType}',
+      );
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(error.toString())));
       }
     }
-  }
-
-  String _moneyFromFuture(String debtId) {
-    // The displayed running balance is refreshed after each recorded payment.
-    final summary = _summaries.values.firstOrNull;
-    return _money(summary?.outstandingMinor ?? 0);
   }
 
   Future<void> _addDebt(String partyId) async {
@@ -542,7 +541,9 @@ class _PartyManagementScreenState extends State<PartyManagementScreen> {
                     Navigator.pop(dialogContext, true);
                   }
                 } catch (error) {
-                  debugPrint('Failed to record party debt payment: $error');
+                  debugPrint(
+                    'Failed to record party debt payment: ${error.runtimeType}',
+                  );
                   if (dialogContext.mounted) {
                     ScaffoldMessenger.of(
                       dialogContext,
@@ -754,7 +755,7 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen> {
         _error = null;
       });
     } catch (error) {
-      debugPrint('Failed to load purchases: $error');
+      debugPrint('Failed to load purchases: ${error.runtimeType}');
       if (!mounted || request != _loadRequest) return;
       setState(() {
         _loading = false;
@@ -1078,7 +1079,7 @@ class _PurchaseEntryScreenState extends State<PurchaseEntryScreen> {
         _error = null;
       });
     } catch (error) {
-      debugPrint('Failed to load purchase entry data: $error');
+      debugPrint('Failed to load purchase entry data: ${error.runtimeType}');
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -1167,7 +1168,7 @@ class _PurchaseEntryScreenState extends State<PurchaseEntryScreen> {
       await widget.database.purchases.checkout(purchase, tenders: tenders);
       if (mounted) Navigator.pop(context);
     } catch (error) {
-      debugPrint('Failed to record purchase: $error');
+      debugPrint('Failed to record purchase: ${error.runtimeType}');
       if (mounted) _showError(error.toString());
     } finally {
       if (mounted) setState(() => _saving = false);

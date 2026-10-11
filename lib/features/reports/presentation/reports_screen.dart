@@ -104,7 +104,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         _loading = false;
       });
     } catch (error) {
-      debugPrint('Failed to load analytics and reports: $error');
+      debugPrint('Failed to load analytics and reports: ${error.runtimeType}');
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -293,7 +293,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ),
       );
     } catch (error) {
-      debugPrint('Failed to export or share report: $error');
+      debugPrint('Failed to export or share report: ${error.runtimeType}');
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(error.toString())));

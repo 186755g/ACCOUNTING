@@ -47,7 +47,7 @@ class _InventoryManagementScreenState extends State<InventoryManagementScreen> {
         _error = null;
       });
     } catch (error) {
-      debugPrint('Failed to load inventory: $error');
+      debugPrint('Failed to load inventory: ${error.runtimeType}');
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -172,7 +172,7 @@ class _InventoryManagementScreenState extends State<InventoryManagementScreen> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(strings.stockAdjusted)));
     } catch (error) {
-      debugPrint('Failed to adjust stock: $error');
+      debugPrint('Failed to adjust stock: ${error.runtimeType}');
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(error.toString())));

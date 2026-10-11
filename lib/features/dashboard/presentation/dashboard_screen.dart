@@ -13,6 +13,7 @@ class DashboardScreen extends StatefulWidget {
     required this.onLocaleChanged,
     required this.onThemeChanged,
     required this.onProductsPressed,
+    required this.onNewSalePressed,
     required this.onSalesPressed,
     required this.onInventoryPressed,
     required this.onAccountPressed,
@@ -21,6 +22,7 @@ class DashboardScreen extends StatefulWidget {
     required this.onPurchasesPressed,
     required this.onReportsPressed,
     required this.onAnalyticsPressed,
+    required this.onExpensesPressed,
     required this.onSearchPressed,
     required this.onSalePressed,
     super.key,
@@ -32,6 +34,7 @@ class DashboardScreen extends StatefulWidget {
   final Future<void> Function(Locale) onLocaleChanged;
   final VoidCallback onThemeChanged;
   final VoidCallback onProductsPressed;
+  final VoidCallback onNewSalePressed;
   final VoidCallback onSalesPressed;
   final VoidCallback onInventoryPressed;
   final VoidCallback onAccountPressed;
@@ -40,6 +43,7 @@ class DashboardScreen extends StatefulWidget {
   final VoidCallback onPurchasesPressed;
   final VoidCallback onReportsPressed;
   final VoidCallback onAnalyticsPressed;
+  final VoidCallback onExpensesPressed;
   final ValueChanged<String> onSearchPressed;
   final ValueChanged<String> onSalePressed;
 
@@ -72,7 +76,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _loadError = null;
       });
     } catch (error) {
-      debugPrint('Failed to load dashboard summary: $error');
+      debugPrint('Failed to load dashboard summary: ${error.runtimeType}');
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -80,6 +84,128 @@ class _DashboardScreenState extends State<DashboardScreen> {
       });
     }
   }
+
+  Future<void> _showMoreMenu() async {
+    final strings = AppLocalizations.of(context);
+    final destination = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _menuItem(
+                'purchases',
+                strings.purchaseTitle,
+                Icons.shopping_bag_outlined,
+              ),
+              _menuItem(
+                'suppliers',
+                strings.supplierManagement,
+                Icons.local_shipping_outlined,
+              ),
+              _menuItem(
+                'expenses',
+                strings.expenses,
+                Icons.receipt_long_outlined,
+              ),
+              _menuItem(
+                'inventory',
+                strings.inventory,
+                Icons.warehouse_outlined,
+              ),
+              _menuItem(
+                'analytics',
+                strings.analytics,
+                Icons.insights_outlined,
+              ),
+              _menuItem('reports', strings.reports, Icons.analytics_outlined),
+              _menuItem('settings', strings.settings, Icons.settings_outlined),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    switch (destination) {
+      case 'purchases':
+        widget.onPurchasesPressed();
+      case 'suppliers':
+        widget.onSuppliersPressed();
+      case 'expenses':
+        widget.onExpensesPressed();
+      case 'inventory':
+        widget.onInventoryPressed();
+      case 'analytics':
+        widget.onAnalyticsPressed();
+      case 'reports':
+        widget.onReportsPressed();
+      case 'settings':
+        widget.onAccountPressed();
+    }
+  }
+
+  Future<void> _showQuickActions() async {
+    final strings = AppLocalizations.of(context);
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsetsDirectional.fromSTEB(20, 16, 20, 8),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Text(
+                  strings.quickActions,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+            ),
+            _menuItem(
+              'new-sale',
+              strings.newSale,
+              Icons.point_of_sale_outlined,
+            ),
+            _menuItem(
+              'add-product',
+              strings.addProduct,
+              Icons.add_box_outlined,
+            ),
+            _menuItem(
+              'add-expense',
+              strings.addExpense,
+              Icons.receipt_long_outlined,
+            ),
+            _menuItem(
+              'receive-payment',
+              strings.receivePayment,
+              Icons.payments_outlined,
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    switch (action) {
+      case 'new-sale':
+        widget.onNewSalePressed();
+      case 'add-product':
+        widget.onProductsPressed();
+      case 'add-expense':
+        widget.onExpensesPressed();
+      case 'receive-payment':
+        widget.onCustomersPressed();
+    }
+  }
+
+  Widget _menuItem(String value, String label, IconData icon) => ListTile(
+    key: ValueKey(value),
+    leading: Icon(icon),
+    title: Text(label),
+    onTap: () => Navigator.pop(context, value),
+  );
 
   @override
   void dispose() {
@@ -99,18 +225,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
           title: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
+              Image.asset(
+                'assets/images/app_icon.png',
                 width: 38,
                 height: 38,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.storefront_rounded,
-                  size: 21,
-                  color: Colors.white,
-                ),
+                fit: BoxFit.contain,
+                key: const ValueKey('app-logo'),
               ),
               const SizedBox(width: 11),
               Text(strings.appName),
@@ -132,87 +252,56 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               child: Text(strings.language),
             ),
-            IconButton(
+            const SizedBox(width: 8),
+          ],
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          key: const ValueKey('quick-action-menu'),
+          onPressed: _showQuickActions,
+          icon: const Icon(Icons.add),
+          label: Text(strings.quickActions),
+        ),
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: 0,
+          destinations: [
+            NavigationDestination(
+              icon: const Icon(Icons.dashboard_outlined),
+              selectedIcon: const Icon(Icons.dashboard),
+              label: strings.home,
+            ),
+            NavigationDestination(
               key: const ValueKey('open-products'),
-              tooltip: strings.productsTitle,
-              onPressed: widget.onProductsPressed,
               icon: const Icon(Icons.inventory_2_outlined),
+              label: strings.productsTitle,
             ),
-            IconButton(
-              key: const ValueKey('open-inventory'),
-              tooltip: strings.inventory,
-              onPressed: widget.onInventoryPressed,
-              icon: const Icon(Icons.warehouse_outlined),
-            ),
-            IconButton(
+            NavigationDestination(
               key: const ValueKey('open-sales'),
-              tooltip: strings.salesTitle,
-              onPressed: widget.onSalesPressed,
               icon: const Icon(Icons.point_of_sale_outlined),
+              label: strings.salesTitle,
             ),
-            IconButton(
-              key: const ValueKey('open-reports'),
-              tooltip: strings.reports,
-              onPressed: widget.onReportsPressed,
-              icon: const Icon(Icons.analytics_outlined),
+            NavigationDestination(
+              key: const ValueKey('open-customers'),
+              icon: const Icon(Icons.people_outline),
+              label: strings.customers,
             ),
-            PopupMenuButton<String>(
+            NavigationDestination(
               key: const ValueKey('open-business-management'),
-              tooltip: strings.businessManagement,
-              onSelected: (value) {
-                switch (value) {
-                  case 'customers':
-                    widget.onCustomersPressed();
-                  case 'suppliers':
-                    widget.onSuppliersPressed();
-                  case 'purchases':
-                    widget.onPurchasesPressed();
-                }
-              },
-              itemBuilder: (context) => [
-                PopupMenuItem(
-                  value: 'customers',
-                  child: ListTile(
-                    leading: const Icon(Icons.people_outline),
-                    title: Text(strings.customerManagement),
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'suppliers',
-                  child: ListTile(
-                    leading: const Icon(Icons.local_shipping_outlined),
-                    title: Text(strings.supplierManagement),
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'purchases',
-                  child: ListTile(
-                    leading: const Icon(Icons.shopping_bag_outlined),
-                    title: Text(strings.purchaseTitle),
-                  ),
-                ),
-              ],
               icon: const Icon(Icons.more_horiz),
-            ),
-            IconButton(
-              tooltip: strings.account,
-              onPressed: widget.onAccountPressed,
-              padding: const EdgeInsetsDirectional.only(start: 8, end: 20),
-              icon: CircleAvatar(
-                radius: 19,
-                backgroundColor: Theme.of(context).colorScheme.primary
-                    .withValues(alpha: 0.12),
-                foregroundColor: Theme.of(context).colorScheme.primary,
-                child: Text(
-                  widget.settings.ownerName.isEmpty
-                      ? '?'
-                      : widget.settings.ownerName.characters.first,
-                  style: Theme.of(context).textTheme.labelLarge
-                      ?.copyWith(color: Theme.of(context).colorScheme.primary),
-                ),
-              ),
+              label: strings.more,
             ),
           ],
+          onDestinationSelected: (index) {
+            switch (index) {
+              case 1:
+                widget.onProductsPressed();
+              case 2:
+                widget.onSalesPressed();
+              case 3:
+                widget.onCustomersPressed();
+              case 4:
+                _showMoreMenu();
+            }
+          },
         ),
         body: LayoutBuilder(
           builder: (context, constraints) {

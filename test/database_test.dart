@@ -1076,6 +1076,107 @@ void main() {
   });
 
   test(
+    'rejects invalid quantities and discounts and protects sale history',
+    () async {
+      expect(
+        () => SaleItem(
+          saleId: 'invalid-zero-quantity',
+          productId: 'product',
+          productName: 'Product',
+          quantity: 0,
+          sellingPriceMinor: 100,
+          costPriceMinor: 50,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => PurchaseItem(
+          purchaseId: 'invalid-negative-quantity',
+          productId: 'product',
+          productName: 'Product',
+          quantity: -1,
+          costPriceMinor: 50,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => SaleItem(
+          saleId: 'discount-over-total',
+          productId: 'product',
+          productName: 'Product',
+          quantity: 1,
+          sellingPriceMinor: 100,
+          costPriceMinor: 50,
+          discountMinor: 101,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        () => PurchaseItem(
+          purchaseId: 'discount-over-purchase',
+          productId: 'product',
+          productName: 'Product',
+          quantity: 1,
+          costPriceMinor: 100,
+          discountMinor: 101,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        SaleItem(
+          saleId: 'zero-price',
+          productId: 'free-product',
+          productName: 'Free sample',
+          quantity: 1,
+          sellingPriceMinor: 0,
+          costPriceMinor: 0,
+        ).totalMinor,
+        0,
+      );
+    },
+  );
+
+  test(
+    'supports very large quantities and protects referenced products',
+    () async {
+      const quantity = 1000000000.0;
+      final product = Product(
+        id: 'large-quantity-product',
+        name: 'Large quantity product',
+        costPriceMinor: 0,
+        sellingPriceMinor: 0,
+        stockQuantity: quantity,
+      );
+      await database.products.create(product);
+
+      const saleId = 'large-quantity-sale';
+      await database.sales.checkout(
+        Sale(
+          id: saleId,
+          items: [
+            SaleItem(
+              saleId: saleId,
+              productId: product.id,
+              productName: product.name,
+              quantity: quantity,
+              sellingPriceMinor: 0,
+              costPriceMinor: 0,
+            ),
+          ],
+        ),
+        tenders: const [],
+      );
+
+      expect((await database.products.getById(product.id))!.stockQuantity, 0);
+      await expectLater(
+        database.products.delete(product.id),
+        throwsA(anything),
+      );
+      expect(await database.products.getById(product.id), isNotNull);
+    },
+  );
+
+  test(
     'persists expenses, users, and expense payments with CRUD filters',
     () async {
       final user = User(name: 'Account owner', email: 'owner@example.com');

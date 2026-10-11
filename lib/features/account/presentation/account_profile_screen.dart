@@ -96,7 +96,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
       );
       Navigator.of(context).pop();
     } catch (error) {
-      debugPrint('Failed to save local account profile: $error');
+      debugPrint('Failed to save local account profile: ${error.runtimeType}');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppLocalizations.of(context).profileSaveFailed)),
@@ -126,7 +126,9 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
       }
       setState(() => update(true));
     } catch (error) {
-      debugPrint('Could not request local notification permission: $error');
+      debugPrint(
+        'Could not request local notification permission: ${error.runtimeType}',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -148,7 +150,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
         });
       }
     } catch (error) {
-      debugPrint('Could not load latest local backup: $error');
+      debugPrint('Could not load latest local backup: ${error.runtimeType}');
       if (mounted) setState(() => _backupStatusFailed = true);
     }
   }
@@ -165,7 +167,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
         await _backupTransport.exportBackup(file, subject: strings.backupTitle);
       } catch (error) {
         debugPrint(
-          'Backup was saved locally but could not be exported: $error',
+          'Backup was saved locally but could not be exported: ${error.runtimeType}',
         );
         if (!mounted) return;
         ScaffoldMessenger.of(context)
@@ -176,7 +178,9 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(strings.backupCreated)));
     } catch (error) {
-      debugPrint('Failed to create or export local backup: $error');
+      debugPrint(
+        'Failed to create or export local backup: ${error.runtimeType}',
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppLocalizations.of(context).backupFailed)),
@@ -222,20 +226,20 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
       Navigator.of(context).pop();
     } on DatabaseReplacementException catch (error) {
       await widget.onDatabaseRestored(error.recoveredDatabase);
-      debugPrint('Backup restore was rolled back: $error');
+      debugPrint('Backup restore was rolled back: ${error.runtimeType}');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppLocalizations.of(context).restoreFailed)),
       );
       Navigator.of(context).pop();
     } on FormatException catch (error) {
-      debugPrint('Rejected invalid local backup: $error');
+      debugPrint('Rejected invalid local backup: ${error.runtimeType}');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppLocalizations.of(context).backupInvalid)),
       );
     } catch (error) {
-      debugPrint('Failed to restore local backup: $error');
+      debugPrint('Failed to restore local backup: ${error.runtimeType}');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(AppLocalizations.of(context).restoreFailed)),
@@ -246,7 +250,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
           await _backupTransport.releaseImport(selectedBackup);
         } catch (error) {
           debugPrint(
-            'Could not clean up imported backup temporary file: $error',
+            'Could not clean up imported backup temporary file: ${error.runtimeType}',
           );
         }
       }

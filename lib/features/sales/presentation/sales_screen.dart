@@ -81,7 +81,7 @@ class _SalesScreenState extends State<SalesScreen> {
         _error = null;
       });
     } catch (error) {
-      debugPrint('Failed to load sales: $error');
+      debugPrint('Failed to load sales: ${error.runtimeType}');
       if (!mounted || request != _loadRequest) return;
       setState(() {
         _loading = false;

@@ -68,7 +68,7 @@ class _ProductManagementScreenState extends State<ProductManagementScreen> {
         _loadError = null;
       });
     } catch (error) {
-      debugPrint('Failed to load products: $error');
+      debugPrint('Failed to load products: ${error.runtimeType}');
       if (!mounted || request != _loadRequest) return;
       setState(() {
         _loading = false;
@@ -101,7 +101,7 @@ class _ProductManagementScreenState extends State<ProductManagementScreen> {
         _loadingMore = false;
       });
     } catch (error) {
-      debugPrint('Failed to load more products: $error');
+      debugPrint('Failed to load more products: ${error.runtimeType}');
       if (!mounted || request != _loadRequest) return;
       setState(() {
         _loadingMore = false;

@@ -25,6 +25,15 @@ class AppLocalizations {
       : 'The application foundation is ready. Sales and inventory modules will be added in later phases.';
   String get language => isArabic ? 'English' : 'العربية';
   String get dashboard => isArabic ? 'لوحة التحكم' : 'Dashboard';
+  String get home => isArabic ? 'الرئيسية' : 'Home';
+  String get more => isArabic ? 'المزيد' : 'More';
+  String get quickActions => isArabic ? 'إجراء سريع' : 'Quick actions';
+  String get addExpense => isArabic ? 'إضافة مصروف' : 'Add expense';
+  String get receivePayment => isArabic ? 'استلام دفعة' : 'Receive payment';
+  String get addExpenseTitle =>
+      isArabic ? 'إضافة مصروف جديد' : 'Add new expense';
+  String get noExpenses => isArabic ? 'لا توجد مصروفات بعد' : 'No expenses yet';
+  String get expenseSaved => isArabic ? 'تم حفظ المصروف' : 'Expense saved';
   String get greeting => isArabic ? 'صباح الخير' : 'Good morning';
   String get dashboardSubtitle => isArabic
       ? 'إليك ملخص نشاط متجرك اليوم'

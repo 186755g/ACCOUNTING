@@ -82,7 +82,7 @@ class _SaleDetailScreenState extends State<SaleDetailScreen> {
         _error = null;
       });
     } catch (error) {
-      debugPrint('Failed to load sale details: $error');
+      debugPrint('Failed to load sale details: ${error.runtimeType}');
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -131,7 +131,7 @@ class _SaleDetailScreenState extends State<SaleDetailScreen> {
         ShareParams(text: receipt, subject: '${strings.saleNumber} ${sale.id}'),
       );
     } catch (error) {
-      debugPrint('Failed to share sale receipt: $error');
+      debugPrint('Failed to share sale receipt: ${error.runtimeType}');
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(error.toString())));
@@ -177,7 +177,7 @@ class _SaleDetailScreenState extends State<SaleDetailScreen> {
         image.dispose();
       }
     } catch (error) {
-      debugPrint('Failed to print sale receipt: $error');
+      debugPrint('Failed to print sale receipt: ${error.runtimeType}');
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(error.toString())));

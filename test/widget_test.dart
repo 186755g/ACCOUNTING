@@ -60,12 +60,13 @@ void main() {
     expect(find.text('صباح الخير'), findsOneWidget);
     expect(find.text('مبيعات اليوم'), findsOneWidget);
     expect(find.text('أحدث العمليات'), findsOneWidget);
+    expect(find.byKey(const ValueKey('app-logo')), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('open-business-management')));
     await tester.pumpAndSettle();
-    expect(find.text('إدارة العملاء'), findsOneWidget);
     expect(find.text('إدارة الموردين'), findsOneWidget);
     expect(find.text('المشتريات'), findsOneWidget);
+    expect(find.text('المصروفات'), findsOneWidget);
   });
 
   testWidgets('switches language and theme', (tester) async {
@@ -89,6 +90,156 @@ void main() {
     await tester.tap(find.byIcon(Icons.dark_mode_outlined));
     await tester.pumpAndSettle();
     expect(find.byIcon(Icons.light_mode_outlined), findsOneWidget);
+  });
+
+  testWidgets('shows each customer debt outstanding balance independently', (
+    tester,
+  ) async {
+    final customer = Customer(name: 'رصيد الاختبار');
+    await database.customers.create(customer);
+    final firstDebt = await database.partyAccounts.addCustomerDebt(
+      customerId: customer.id,
+      amountMinor: 10000,
+      description: 'الدين الأول',
+    );
+    final secondDebt = await database.partyAccounts.addCustomerDebt(
+      customerId: customer.id,
+      amountMinor: 25000,
+      description: 'الدين الثاني',
+    );
+    await database.partyAccounts.recordPayment(
+      debtId: firstDebt.id,
+      amountMinor: 3000,
+      method: PaymentMethod.cash,
+    );
+    await database.partyAccounts.recordPayment(
+      debtId: secondDebt.id,
+      amountMinor: 5000,
+      method: PaymentMethod.cash,
+    );
+
+    await tester.pumpWidget(
+      HesabatiApp(
+        database: database,
+        initialSettings: settings,
+        dashboardDataLoader: loadEmptyDashboard,
+        alertService: _TestAlerts(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('open-customers')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('رصيد الاختبار'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('الرصيد المستحق: EGP 70.00'), findsOneWidget);
+    expect(find.text('الرصيد المستحق: EGP 200.00'), findsOneWidget);
+  });
+
+  testWidgets('navigates from the main bar and opens More destinations', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      HesabatiApp(
+        database: database,
+        initialSettings: settings,
+        dashboardDataLoader: loadEmptyDashboard,
+        alertService: _TestAlerts(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('open-products')));
+    await tester.pumpAndSettle();
+    expect(find.text('المنتجات'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('open-sales')));
+    await tester.pumpAndSettle();
+    expect(find.text('بيع جديد'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('open-customers')));
+    await tester.pumpAndSettle();
+    expect(find.text('إدارة العملاء'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('open-business-management')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('expenses')));
+    await tester.pumpAndSettle();
+    expect(find.text('لا توجد مصروفات بعد'), findsOneWidget);
+  });
+
+  testWidgets('quick actions record a validated expense and payment', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      HesabatiApp(
+        database: database,
+        initialSettings: settings,
+        dashboardDataLoader: loadEmptyDashboard,
+        alertService: _TestAlerts(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('quick-action-menu')));
+    await tester.pumpAndSettle();
+    expect(find.text('بيع جديد'), findsOneWidget);
+    expect(find.text('إضافة منتج'), findsOneWidget);
+    expect(find.text('إضافة مصروف'), findsOneWidget);
+    expect(find.text('استلام دفعة'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('new-sale')));
+    await tester.pumpAndSettle();
+    expect(find.text('سلة البيع'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('quick-action-menu')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('add-expense')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('add-expense')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('expense-category')),
+      'مرافق',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('expense-description')),
+      'فاتورة الكهرباء',
+    );
+    await tester.enterText(find.byKey(const ValueKey('expense-amount')), '0');
+    await tester.tap(find.byKey(const ValueKey('save-expense')));
+    await tester.pumpAndSettle();
+    expect(find.text('أدخل رقماً صالحاً'), findsOneWidget);
+    expect(await database.expenses.getAll(), isEmpty);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('expense-amount')),
+      '125.50',
+    );
+    await tester.tap(find.byKey(const ValueKey('save-expense')));
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+    await tester.pumpAndSettle();
+
+    final expenses = await tester.runAsync(() => database.expenses.getAll());
+    expect(expenses, hasLength(1));
+    expect(expenses!.single.amountMinor, 12550);
+    final payments = await tester.runAsync(
+      () =>
+          database.payments.getAll(filters: {'expense_id': expenses.single.id}),
+    );
+    expect(payments, hasLength(1));
+    expect(payments!.single.amountMinor, 12550);
+    expect(payments.single.method, PaymentMethod.cash);
   });
 
   testWidgets('filters recent transactions by search query', (tester) async {

@@ -60,7 +60,7 @@ class _SalePosScreenState extends State<SalePosScreen> {
         _error = null;
       });
     } catch (error) {
-      debugPrint('Failed to load point-of-sale data: $error');
+      debugPrint('Failed to load point-of-sale data: ${error.runtimeType}');
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -196,7 +196,9 @@ class _SalePosScreenState extends State<SalePosScreen> {
         ),
       );
     } catch (error) {
-      debugPrint('Failed to record point-of-sale transaction: $error');
+      debugPrint(
+        'Failed to record point-of-sale transaction: ${error.runtimeType}',
+      );
       if (!mounted) return;
       _showError(error.toString());
     } finally {
