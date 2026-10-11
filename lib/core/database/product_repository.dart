@@ -32,29 +32,32 @@ class ProductRepository {
   final InventoryRepository _inventory;
   final SqliteEntityRepository<Product> _repository;
 
-  Future<void> create(Product product) => _database.transaction((transaction) async {
-    final values = product.toMap()..['stock_quantity'] = 0.0;
-    await transaction.insert(
-      'products',
-      values,
-      conflictAlgorithm: ConflictAlgorithm.abort,
-    );
-    if (product.stockQuantity != 0) {
-      await _inventory.recordStockChange(
-        transaction,
-        productId: product.id,
-        quantity: product.stockQuantity,
-        reason: 'opening_stock',
-        date: product.createdAt,
-        sourceType: 'product',
-        sourceId: product.id,
-      );
-    }
-  });
+  Future<void> create(Product product) =>
+      _database.transaction((transaction) async {
+        final values = product.toMap()..['stock_quantity'] = 0.0;
+        await transaction.insert(
+          'products',
+          values,
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        if (product.stockQuantity != 0) {
+          await _inventory.recordStockChange(
+            transaction,
+            productId: product.id,
+            quantity: product.stockQuantity,
+            reason: 'opening_stock',
+            date: product.createdAt,
+            sourceType: 'product',
+            sourceId: product.id,
+          );
+        }
+      });
 
   Future<Product?> getById(String id) => _repository.getById(id);
 
-  Future<void> update(Product product) => _database.transaction((transaction) async {
+  Future<void> update(Product product) => _database.transaction((
+    transaction,
+  ) async {
     final rows = await transaction.query(
       'products',
       columns: ['stock_quantity'],
@@ -63,7 +66,9 @@ class ProductRepository {
       limit: 1,
     );
     if (rows.isEmpty) {
-      throw StateError('Cannot update missing products record "${product.id}".');
+      throw StateError(
+        'Cannot update missing products record "${product.id}".',
+      );
     }
     final previousQuantity = (rows.single['stock_quantity'] as num).toDouble();
     final values = product.toMap()..['stock_quantity'] = previousQuantity;
@@ -134,6 +139,8 @@ class ProductRepository {
     String? categoryId,
     bool lowStockOnly = false,
     bool activeOnly = false,
+    int? limit,
+    int offset = 0,
     ProductSortField sortBy = ProductSortField.name,
     bool descending = false,
   }) async {
@@ -176,6 +183,8 @@ class ProductRepository {
       where: clauses.isEmpty ? null : clauses.join(' AND '),
       whereArgs: arguments.isEmpty ? null : arguments,
       orderBy: '$orderColumn ${descending ? 'DESC' : 'ASC'}, id ASC',
+      limit: limit,
+      offset: offset,
     );
     return rows.map(Product.fromMap).toList(growable: false);
   }

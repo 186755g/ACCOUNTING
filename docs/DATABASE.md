@@ -1,0 +1,69 @@
+# Database guide
+
+## Location and access
+
+The application uses one local SQLite database, `hesabati.db`, opened through
+`LocalDatabase.open()`. Tests can provide a separate database path and
+`DatabaseFactory`. Typed models and repositories are exported from
+`lib/core/database/database.dart`.
+
+SQLite foreign-key enforcement and a busy timeout are enabled on each app
+connection. Application money is stored in integer minor units; quantities
+and inventory snapshots use real-valued quantities. Dates are UTC epoch
+milliseconds.
+
+## Main tables
+
+| Tables | Purpose |
+| --- | --- |
+| `categories`, `products` | Product catalog, identifiers, prices, and stock |
+| `sales`, `sale_items`, `product_returns` | Completed sale headers, immutable line snapshots, and returns |
+| `purchases`, `purchase_items` | Received stock and supplier purchase snapshots |
+| `customers`, `suppliers` | Business contacts |
+| `debts`, `payments` | Separate receivables/payables and their payment ledger |
+| `expenses`, `users` | Operating costs and optional user attribution |
+| `inventory_history` | Auditable stock movements with before/after quantities |
+| `app_settings` | Business profile and notification preferences |
+| `notification_deliveries` | Alert fingerprints and cooldown timestamps |
+
+Sales, purchases, their item rows, payment tenders, debt creation, and inventory
+changes are written within repository transactions. A product cannot be hard
+deleted while historical sale/purchase or inventory references remain.
+
+Outstanding customer and supplier balances are derived from debt entries minus
+payments. They are not treated as editable totals. Sale-time cost, price,
+discount, and product-name snapshots preserve historical reporting when the
+catalog later changes.
+
+## Schema migrations
+
+The current schema version is **7** (`LocalDatabase.databaseVersion`).
+Increment it for every schema change and add a forward migration in
+`LocalDatabase._upgradeSchema`. Migrations must work from every supported old
+version and preserve data. Fresh schema creation and migration paths must
+produce the same current tables and constraints. Keep migration tests using a
+real legacy schema fixture in `test/database_test.dart`.
+
+Version 7 adds five disabled-by-default notification settings and the
+`notification_deliveries` deduplication table. The table uses
+`CREATE TABLE IF NOT EXISTS` in migration to accommodate older upgrade paths
+that create inventory schema at the same time.
+
+## Backup format and restore
+
+`.hdb` files contain the `HESABATI` magic signature, a bounded JSON metadata
+header, and a gzip-compressed SQLite snapshot. Metadata carries the archive
+format version, exact schema version, UTC creation time, uncompressed size,
+and SHA-256 digest. The current implementation bounds uncompressed database
+files to 1 GiB and streams decompression while enforcing the declared size.
+
+Restore rejects malformed, corrupt, or incompatible input before closing the
+live connection. It checks SQLite integrity, foreign keys, schema version,
+required tables, and the business-settings row. Database replacement makes a
+second `VACUUM INTO` rollback snapshot first. If replacement fails, the
+previous database is restored and reopened. Keep destructive file operations
+limited to the explicitly resolved database, temporary snapshot, and SQLite
+sidecar paths.
+
+The archive is currently **not encrypted**. Do not assume file-system sharing
+or transport encryption protects backups at rest.

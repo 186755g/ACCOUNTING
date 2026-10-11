@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hesabati/app/app.dart';
 import 'package:hesabati/core/database/database.dart';
+import 'package:hesabati/core/services/local_alert_service.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -20,21 +21,61 @@ void main() {
 
   tearDown(() => database.close());
 
+  Future<DashboardData> loadEmptyDashboard(DateTime _) async =>
+      const DashboardData(
+        summary: DashboardSummary(
+          financial: FinancialSummary(
+            grossSalesMinor: 0,
+            discountsMinor: 0,
+            refundsMinor: 0,
+            costOfGoodsMinor: 0,
+            expensesMinor: 0,
+            grossProfitMinor: 0,
+            netProfitMinor: 0,
+            customerDebtPaymentsMinor: 0,
+            supplierDebtPaymentsMinor: 0,
+          ),
+          productCount: 0,
+          lowStockCount: 0,
+          customerOutstandingMinor: 0,
+          supplierOutstandingMinor: 0,
+          todaySalesCount: 0,
+          recentSales: [],
+        ),
+        trend: [],
+      );
+
   testWidgets('shows the Arabic dashboard and summary cards', (tester) async {
     await tester.pumpWidget(
-      HesabatiApp(database: database, initialSettings: settings),
+      HesabatiApp(
+        database: database,
+        initialSettings: settings,
+        dashboardDataLoader: loadEmptyDashboard,
+        alertService: _TestAlerts(),
+      ),
     );
     await tester.pumpAndSettle();
 
     expect(find.text('لوحة التحكم'), findsOneWidget);
     expect(find.text('صباح الخير'), findsOneWidget);
-    expect(find.text('إجمالي المبيعات'), findsOneWidget);
+    expect(find.text('مبيعات اليوم'), findsOneWidget);
     expect(find.text('أحدث العمليات'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('open-business-management')));
+    await tester.pumpAndSettle();
+    expect(find.text('إدارة العملاء'), findsOneWidget);
+    expect(find.text('إدارة الموردين'), findsOneWidget);
+    expect(find.text('المشتريات'), findsOneWidget);
   });
 
   testWidgets('switches language and theme', (tester) async {
     await tester.pumpWidget(
-      HesabatiApp(database: database, initialSettings: settings),
+      HesabatiApp(
+        database: database,
+        initialSettings: settings,
+        dashboardDataLoader: loadEmptyDashboard,
+        alertService: _TestAlerts(),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -52,19 +93,29 @@ void main() {
 
   testWidgets('filters recent transactions by search query', (tester) async {
     await tester.pumpWidget(
-      HesabatiApp(database: database, initialSettings: settings),
+      HesabatiApp(
+        database: database,
+        initialSettings: settings,
+        dashboardDataLoader: loadEmptyDashboard,
+        alertService: _TestAlerts(),
+      ),
     );
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextFormField), 'not-a-transaction');
     await tester.pumpAndSettle();
 
-    expect(find.text('لا توجد نتائج'), findsOneWidget);
+    expect(find.text('لا توجد نتائج مطابقة'), findsOneWidget);
   });
 
   testWidgets('saves and reloads an offline business profile', (tester) async {
     await tester.pumpWidget(
-      HesabatiApp(database: database, initialSettings: settings),
+      HesabatiApp(
+        database: database,
+        initialSettings: settings,
+        dashboardDataLoader: loadEmptyDashboard,
+        alertService: _TestAlerts(),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -103,7 +154,15 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('allow-negative-stock')));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.byType(FilledButton),
+      find.byKey(const ValueKey('notify-low-stock')),
+      160,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('notify-low-stock')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('حفظ'),
       160,
       scrollable: find.byType(Scrollable).first,
     );
@@ -119,6 +178,15 @@ void main() {
     expect(saved.currencyCode, 'USD');
     expect(saved.localeCode, 'en');
     expect(saved.allowNegativeStock, isTrue);
+    expect(saved.notifyLowStock, isTrue);
     expect(find.text('Dashboard'), findsOneWidget);
   });
+}
+
+class _TestAlerts implements BusinessAlertService {
+  @override
+  Future<void> refresh({DateTime? now}) async {}
+
+  @override
+  Future<bool> requestPermission() async => true;
 }

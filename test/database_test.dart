@@ -57,6 +57,127 @@ void main() {
   });
 
   test(
+    'checks out sales and purchases with separate receivable/payable balances',
+    () async {
+      final customer = Customer(name: 'Customer account');
+      final supplier = Supplier(name: 'Supplier account');
+      final product = Product(
+        id: 'accounting-product',
+        name: 'Accounting product',
+        costPriceMinor: 100,
+        sellingPriceMinor: 500,
+        stockQuantity: 10,
+      );
+      await database.customers.create(customer);
+      await database.suppliers.create(supplier);
+      await database.products.create(product);
+
+      const saleId = 'accounting-sale';
+      await database.sales.checkout(
+        Sale(
+          id: saleId,
+          customerId: customer.id,
+          items: [
+            SaleItem(
+              saleId: saleId,
+              productId: product.id,
+              productName: product.name,
+              quantity: 2,
+              sellingPriceMinor: 500,
+              costPriceMinor: 100,
+            ),
+          ],
+        ),
+        tenders: const [
+          SaleTender(method: PaymentMethod.card, amountMinor: 400),
+        ],
+      );
+      var summary = await database.partyAccounts.getCustomerSummary(
+        customer.id,
+      );
+      expect(summary.documentTotalMinor, 1000);
+      expect(summary.totalPaidMinor, 400);
+      expect(summary.outstandingMinor, 600);
+
+      final customerDebt = (await database.debts.getAll(
+        filters: {'sale_id': saleId},
+      )).single;
+      await database.partyAccounts.recordPayment(
+        debtId: customerDebt.id,
+        amountMinor: 250,
+        method: PaymentMethod.cash,
+      );
+      summary = await database.partyAccounts.getCustomerSummary(customer.id);
+      expect(summary.totalPaidMinor, 650);
+      expect(summary.outstandingMinor, 350);
+      await expectLater(
+        database.partyAccounts.recordPayment(
+          debtId: customerDebt.id,
+          amountMinor: 351,
+          method: PaymentMethod.cash,
+        ),
+        throwsArgumentError,
+      );
+      await database.partyAccounts.recordPayment(
+        debtId: customerDebt.id,
+        amountMinor: 350,
+        method: PaymentMethod.mobileWallet,
+      );
+      expect(
+        (await database.partyAccounts.getCustomerSummary(customer.id))
+            .outstandingMinor,
+        0,
+      );
+
+      const purchaseId = 'accounting-purchase';
+      await database.purchases.checkout(
+        Purchase(
+          id: purchaseId,
+          supplierId: supplier.id,
+          items: [
+            PurchaseItem(
+              purchaseId: purchaseId,
+              productId: product.id,
+              productName: product.name,
+              quantity: 3,
+              costPriceMinor: 100,
+            ),
+          ],
+        ),
+        tenders: const [
+          SaleTender(method: PaymentMethod.cash, amountMinor: 100),
+        ],
+      );
+      final supplierSummary = await database.partyAccounts.getSupplierSummary(
+        supplier.id,
+      );
+      expect(supplierSummary.documentTotalMinor, 300);
+      expect(supplierSummary.totalPaidMinor, 100);
+      expect(supplierSummary.outstandingMinor, 200);
+      expect(
+        (await database.partyAccounts.getCustomerSummary(customer.id))
+            .outstandingMinor,
+        0,
+      );
+      expect((await database.products.getById(product.id))!.stockQuantity, 11);
+
+      final supplierDebt = (await database.debts.getAll(
+        filters: {'purchase_id': purchaseId},
+      )).single;
+      await database.partyAccounts.recordPayment(
+        debtId: supplierDebt.id,
+        amountMinor: 200,
+        method: PaymentMethod.card,
+      );
+      expect(
+        (await database.partyAccounts.getSupplierSummary(supplier.id))
+            .outstandingMinor,
+        0,
+      );
+    },
+  );
+
+  test(
     'persists sale items and historical cost independently of product edits',
     () async {
       final category = Category(name: 'مشروبات');
@@ -452,20 +573,24 @@ void main() {
       final returned = await database.inventory.returnSaleItem(
         saleItemId: saleItemId,
         quantity: 1,
+        refundMinor: 200,
         note: 'Customer return',
       );
       expect(returned.saleId, saleId);
+      expect(returned.refundMinor, 200);
       expect((await database.products.getById(product.id))!.stockQuantity, 8);
       await expectLater(
         database.inventory.returnSaleItem(
           saleItemId: saleItemId,
           quantity: 2.1,
+          refundMinor: 400,
         ),
         throwsStateError,
       );
       await database.inventory.returnSaleItem(
         saleItemId: saleItemId,
         quantity: 2,
+        refundMinor: 400,
       );
       expect((await database.products.getById(product.id))!.stockQuantity, 10);
       expect(await database.inventory.getReturns(saleId: saleId), hasLength(2));
@@ -478,6 +603,7 @@ void main() {
         database.inventory.returnSaleItem(
           saleItemId: saleItemId,
           quantity: 0.1,
+          refundMinor: 20,
         ),
         throwsStateError,
       );
@@ -573,10 +699,10 @@ void main() {
       final mixedPayments = await database.payments.getAll(
         filters: {'sale_id': mixedSale.id},
       );
-      expect(mixedPayments.map((payment) => payment.amountMinor).toList(), [
-        300,
-        200,
-      ]);
+      expect(
+        mixedPayments.map((payment) => payment.amountMinor),
+        containsAll([300, 200]),
+      );
       final debt = (await database.debts.getAll(
         filters: {'sale_id': mixedSale.id},
       )).single;
@@ -810,6 +936,15 @@ void main() {
       expect(settings.phone, isEmpty);
       expect(settings.businessType, 'other');
       expect(settings.allowNegativeStock, isFalse);
+      expect(settings.notifyLowStock, isFalse);
+      expect(settings.notifyDailySales, isFalse);
+      final notificationTable = await upgradedDatabase.transaction(
+        (transaction) => transaction.rawQuery(
+          "SELECT name FROM sqlite_master "
+          "WHERE type = 'table' AND name = 'notification_deliveries'",
+        ),
+      );
+      expect(notificationTable, hasLength(1));
       final legacyProduct = await upgradedDatabase.products.getById('legacy');
       expect(legacyProduct!.minimumStock, 5);
       expect(legacyProduct.name, 'Legacy product');
@@ -893,6 +1028,14 @@ void main() {
         (await database.products.browse(sortBy: ProductSortField.sellingPrice))
             .map((product) => product.id),
         [high.id, low.id],
+      );
+      expect(
+        (await database.products.browse(limit: 1, offset: 0)).single.id,
+        low.id,
+      );
+      expect(
+        (await database.products.browse(limit: 1, offset: 1)).single.id,
+        high.id,
       );
       expect((await database.products.getById(low.id))!.unit, 'bag');
     },

@@ -14,6 +14,8 @@ class ProductManagementScreen extends StatefulWidget {
 }
 
 class _ProductManagementScreenState extends State<ProductManagementScreen> {
+  static const _pageSize = 50;
+
   final _searchController = TextEditingController();
   List<Category> _categories = [];
   List<Product> _products = [];
@@ -22,6 +24,9 @@ class _ProductManagementScreenState extends State<ProductManagementScreen> {
   bool _lowStockOnly = false;
   bool _descending = false;
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = false;
+  bool _loadMoreFailed = false;
   String? _loadError;
   int _loadRequest = 0;
 
@@ -49,11 +54,16 @@ class _ProductManagementScreenState extends State<ProductManagementScreen> {
         lowStockOnly: _lowStockOnly,
         sortBy: _sortBy,
         descending: _descending,
+        limit: _pageSize + 1,
       );
       if (!mounted || request != _loadRequest) return;
+      final hasMore = products.length > _pageSize;
       setState(() {
         _categories = categories;
-        _products = products;
+        _products = products.take(_pageSize).toList(growable: false);
+        _hasMore = hasMore;
+        _loadingMore = false;
+        _loadMoreFailed = false;
         _loading = false;
         _loadError = null;
       });
@@ -63,6 +73,39 @@ class _ProductManagementScreenState extends State<ProductManagementScreen> {
       setState(() {
         _loading = false;
         _loadError = error.toString();
+      });
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    final request = _loadRequest;
+    setState(() {
+      _loadingMore = true;
+      _loadMoreFailed = false;
+    });
+    try {
+      final products = await widget.database.products.browse(
+        query: _searchController.text,
+        categoryId: _categoryId,
+        lowStockOnly: _lowStockOnly,
+        sortBy: _sortBy,
+        descending: _descending,
+        limit: _pageSize + 1,
+        offset: _products.length,
+      );
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _products = [..._products, ...products.take(_pageSize)];
+        _hasMore = products.length > _pageSize;
+        _loadingMore = false;
+      });
+    } catch (error) {
+      debugPrint('Failed to load more products: $error');
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _loadingMore = false;
+        _loadMoreFailed = true;
       });
     }
   }
@@ -280,8 +323,29 @@ class _ProductManagementScreenState extends State<ProductManagementScreen> {
                     onRefresh: _load,
                     child: ListView.builder(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-                      itemCount: _products.length,
+                      itemCount: _products.length + (_hasMore ? 1 : 0),
                       itemBuilder: (context, index) {
+                        if (index == _products.length) {
+                          if (_loadMoreFailed) {
+                            return Center(
+                              child: TextButton(
+                                onPressed: _loadMore,
+                                child: Text(strings.retry),
+                              ),
+                            );
+                          }
+                          if (!_loadingMore) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted) _loadMore();
+                            });
+                          }
+                          return const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(16),
+                              child: CircularProgressIndicator(),
+                            ),
+                          );
+                        }
                         final product = _products[index];
                         final category = _categories
                             .where((value) => value.id == product.categoryId)

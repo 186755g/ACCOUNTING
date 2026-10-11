@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 
@@ -6,17 +8,19 @@ import 'models/category.dart';
 import 'models/customer.dart';
 import 'models/debt.dart';
 import 'models/expense.dart';
+import 'models/model_utils.dart';
 import 'inventory_repository.dart';
 import 'models/payment.dart';
 import 'models/supplier.dart';
 import 'models/user.dart';
+import 'party_account_repository.dart';
 import 'purchase_repository.dart';
 import 'product_repository.dart';
 import 'sale_repository.dart';
 import 'sqlite_entity_repository.dart';
 
 class LocalDatabase {
-  LocalDatabase._(this._database)
+  LocalDatabase._(this._database, this.databasePath, this._factory)
     : categories = SqliteEntityRepository<Category>(
         _database,
         table: 'categories',
@@ -93,17 +97,21 @@ class LocalDatabase {
       settings = AppSettingsRepository(_database),
       sales = SaleRepository(_database),
       purchases = PurchaseRepository(_database),
+      partyAccounts = PartyAccountRepository(_database),
       inventory = InventoryRepository(_database);
 
-  static const databaseVersion = 4;
+  static const databaseVersion = 7;
   static const databaseName = 'hesabati.db';
 
   final Database _database;
+  final DatabaseFactory _factory;
+  final String databasePath;
 
   final SqliteEntityRepository<Category> categories;
   final ProductRepository products;
   final SaleRepository sales;
   final PurchaseRepository purchases;
+  final PartyAccountRepository partyAccounts;
   final SqliteEntityRepository<Customer> customers;
   final SqliteEntityRepository<Supplier> suppliers;
   final SqliteEntityRepository<Debt> debts;
@@ -132,10 +140,54 @@ class LocalDatabase {
         onUpgrade: _upgradeSchema,
       ),
     );
-    return LocalDatabase._(database);
+    return LocalDatabase._(database, selectedPath, selectedFactory);
   }
 
   Future<void> close() => _database.close();
+
+  Future<void> createSnapshot(String destinationPath) =>
+      _database.execute('VACUUM INTO ?', [destinationPath]);
+
+  Future<LocalDatabase> replaceWithSnapshot(String snapshotPath) async {
+    final rollbackPath = '$databasePath.${newModelId()}.restore-rollback';
+    final rollbackFile = File(rollbackPath);
+    await createSnapshot(rollbackPath);
+    await close();
+    try {
+      await _removeDatabaseSidecars();
+      await File(snapshotPath).copy(databasePath);
+      final restored = await LocalDatabase.open(
+        databasePath: databasePath,
+        factory: _factory,
+      );
+      await rollbackFile.delete();
+      return restored;
+    } catch (error) {
+      try {
+        await _removeDatabaseSidecars();
+        await rollbackFile.copy(databasePath);
+        final recovered = await LocalDatabase.open(
+          databasePath: databasePath,
+          factory: _factory,
+        );
+        await rollbackFile.delete();
+        throw DatabaseReplacementException(error, recovered);
+      } catch (recoveryError) {
+        if (recoveryError is DatabaseReplacementException) rethrow;
+        throw StateError(
+          'Database replacement failed ($error), and rollback failed '
+          '($recoveryError). The original rollback file is at $rollbackPath.',
+        );
+      }
+    }
+  }
+
+  Future<void> _removeDatabaseSidecars() async {
+    for (final suffix in const ['-wal', '-shm', '-journal']) {
+      final sidecar = File('$databasePath$suffix');
+      if (await sidecar.exists()) await sidecar.delete();
+    }
+  }
 
   Future<T> transaction<T>(
     Future<T> Function(Transaction transaction) action,
@@ -228,6 +280,79 @@ class LocalDatabase {
         WHERE barcode IS NOT NULL
       ''');
       await _createInventorySchema(database);
+    }
+    if (oldVersion >= 4 && oldVersion < 5) {
+      await database.execute('''
+        ALTER TABLE product_returns
+        ADD COLUMN refund_minor INTEGER NOT NULL DEFAULT 0
+        CHECK (refund_minor >= 0)
+      ''');
+      await database.execute('''
+        UPDATE product_returns
+        SET refund_minor = COALESCE((
+          SELECT ROUND(
+            product_returns.quantity * sale_items.total_minor /
+            sale_items.quantity
+          )
+          FROM sale_items
+          WHERE sale_items.id = product_returns.sale_item_id
+        ), 0)
+      ''');
+    }
+    if (oldVersion >= 4 && oldVersion < 6) {
+      await database.execute('''
+        ALTER TABLE product_returns
+        ADD COLUMN returned_cost_minor INTEGER NOT NULL DEFAULT 0
+        CHECK (returned_cost_minor >= 0)
+      ''');
+      await database.execute('''
+        UPDATE product_returns
+        SET returned_cost_minor = COALESCE((
+          SELECT ROUND((
+            SELECT SUM(previous.quantity)
+            FROM product_returns previous
+            WHERE previous.sale_item_id = product_returns.sale_item_id
+              AND (
+                previous.date_at < product_returns.date_at OR
+                (previous.date_at = product_returns.date_at
+                  AND previous.id <= product_returns.id)
+              )
+          ) * sale_items.cost_price_minor)
+          - ROUND((
+            SELECT SUM(previous.quantity)
+            FROM product_returns previous
+            WHERE previous.sale_item_id = product_returns.sale_item_id
+              AND (
+                previous.date_at < product_returns.date_at OR
+                (previous.date_at = product_returns.date_at
+                  AND previous.id < product_returns.id)
+              )
+          ) * sale_items.cost_price_minor)
+          FROM sale_items
+          WHERE sale_items.id = product_returns.sale_item_id
+        ), 0)
+      ''');
+    }
+    if (oldVersion < 7) {
+      for (final column in [
+        'notify_low_stock',
+        'notify_out_of_stock',
+        'notify_unpaid_debts',
+        'notify_overdue_payments',
+        'notify_daily_sales',
+      ]) {
+        await database.execute(
+          'ALTER TABLE app_settings ADD COLUMN $column '
+          'INTEGER NOT NULL DEFAULT 0 CHECK ($column IN (0, 1))',
+        );
+      }
+      await database.execute('''
+        CREATE TABLE IF NOT EXISTS notification_deliveries (
+          alert_key TEXT PRIMARY KEY,
+          fingerprint TEXT NOT NULL,
+          delivered_at INTEGER NOT NULL
+        )
+      ''');
     }
   }
 
@@ -431,6 +556,11 @@ class LocalDatabase {
           CHECK (theme_mode IN ('system', 'light', 'dark')),
         allow_negative_stock INTEGER NOT NULL DEFAULT 0
           CHECK (allow_negative_stock IN (0, 1)),
+        notify_low_stock INTEGER NOT NULL DEFAULT 0 CHECK (notify_low_stock IN (0, 1)),
+        notify_out_of_stock INTEGER NOT NULL DEFAULT 0 CHECK (notify_out_of_stock IN (0, 1)),
+        notify_unpaid_debts INTEGER NOT NULL DEFAULT 0 CHECK (notify_unpaid_debts IN (0, 1)),
+        notify_overdue_payments INTEGER NOT NULL DEFAULT 0 CHECK (notify_overdue_payments IN (0, 1)),
+        notify_daily_sales INTEGER NOT NULL DEFAULT 0 CHECK (notify_daily_sales IN (0, 1)),
         updated_at INTEGER NOT NULL
       )
     ''');
@@ -487,6 +617,8 @@ class LocalDatabase {
         sale_item_id TEXT NOT NULL REFERENCES sale_items(id) ON DELETE RESTRICT,
         product_id TEXT NOT NULL REFERENCES products(id) ON DELETE RESTRICT,
         quantity REAL NOT NULL CHECK (quantity > 0),
+        refund_minor INTEGER NOT NULL CHECK (refund_minor >= 0),
+        returned_cost_minor INTEGER NOT NULL CHECK (returned_cost_minor >= 0),
         date_at INTEGER NOT NULL,
         note TEXT
       )
@@ -499,7 +631,24 @@ class LocalDatabase {
       CREATE INDEX idx_product_returns_sale_item
       ON product_returns(sale_item_id)
     ''');
+    await database.execute('''
+      CREATE TABLE notification_deliveries (
+        alert_key TEXT PRIMARY KEY,
+        fingerprint TEXT NOT NULL,
+        delivered_at INTEGER NOT NULL
+      )
+    ''');
   }
+}
+
+class DatabaseReplacementException implements Exception {
+  const DatabaseReplacementException(this.cause, this.recoveredDatabase);
+
+  final Object cause;
+  final LocalDatabase recoveredDatabase;
+
+  @override
+  String toString() => 'Database replacement failed: $cause';
 }
 
 class AppSettingsRepository {

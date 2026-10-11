@@ -77,12 +77,20 @@ class ProductReturn implements DatabaseEntity {
     required this.saleItemId,
     required this.productId,
     required this.quantity,
+    required this.refundMinor,
+    required this.returnedCostMinor,
     DateTime? date,
     this.note,
   }) : id = id ?? newModelId(),
        date = (date ?? DateTime.now()).toUtc() {
     if (!quantity.isFinite || quantity <= 0) {
       throw ArgumentError.value(quantity, 'quantity');
+    }
+    if (refundMinor < 0) {
+      throw ArgumentError.value(refundMinor, 'refundMinor');
+    }
+    if (returnedCostMinor < 0) {
+      throw ArgumentError.value(returnedCostMinor, 'returnedCostMinor');
     }
   }
 
@@ -92,6 +100,8 @@ class ProductReturn implements DatabaseEntity {
   final String saleItemId;
   final String productId;
   final double quantity;
+  final int refundMinor;
+  final int returnedCostMinor;
   final DateTime date;
   final String? note;
 
@@ -102,6 +112,8 @@ class ProductReturn implements DatabaseEntity {
     'sale_item_id': saleItemId,
     'product_id': productId,
     'quantity': quantity,
+    'refund_minor': refundMinor,
+    'returned_cost_minor': returnedCostMinor,
     'date_at': dateToDatabase(date),
     'note': note,
   };
@@ -112,6 +124,8 @@ class ProductReturn implements DatabaseEntity {
     saleItemId: requiredString(map, 'sale_item_id'),
     productId: requiredString(map, 'product_id'),
     quantity: requiredDouble(map, 'quantity'),
+    refundMinor: requiredInt(map, 'refund_minor'),
+    returnedCostMinor: requiredInt(map, 'returned_cost_minor'),
     date: dateFromDatabase(map['date_at']),
     note: nullableString(map, 'note'),
   );

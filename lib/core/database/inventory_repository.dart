@@ -84,15 +84,20 @@ class InventoryRepository {
   Future<ProductReturn> returnSaleItem({
     required String saleItemId,
     required double quantity,
+    required int refundMinor,
     String? note,
     DateTime? date,
   }) async {
     _validateMovement(quantity, 'sale_return');
+    if (refundMinor < 0) {
+      throw ArgumentError.value(refundMinor, 'refundMinor');
+    }
     final returnedAt = (date ?? DateTime.now()).toUtc();
     final productReturn = await _database.transaction((transaction) async {
       final items = await transaction.rawQuery(
         '''
-        SELECT si.sale_id, si.product_id, si.quantity, s.status
+        SELECT si.sale_id, si.product_id, si.quantity, si.cost_price_minor,
+          s.status
         FROM sale_items si
         JOIN sales s ON s.id = si.sale_id
         WHERE si.id = ?
@@ -110,7 +115,8 @@ class InventoryRepository {
       final productId = requiredString(item, 'product_id');
       final soldQuantity = requiredDouble(item, 'quantity');
       final existingReturns = await transaction.rawQuery(
-        'SELECT COALESCE(SUM(quantity), 0) AS quantity '
+        'SELECT COALESCE(SUM(quantity), 0) AS quantity, '
+        'COALESCE(SUM(returned_cost_minor), 0) AS returned_cost '
         'FROM product_returns WHERE sale_item_id = ?',
         [saleItemId],
       );
@@ -118,15 +124,41 @@ class InventoryRepository {
         existingReturns.single,
         'quantity',
       );
+      final returnedCostMinor = requiredInt(
+        existingReturns.single,
+        'returned_cost',
+      );
       if (alreadyReturned + quantity > soldQuantity + 0.000001) {
         throw StateError('Return quantity exceeds the unreturned quantity.');
       }
+      final saleTotals = await transaction.rawQuery(
+        '''
+        SELECT s.total_minor,
+          COALESCE((
+            SELECT SUM(pr.refund_minor) FROM product_returns pr
+            WHERE pr.sale_id = s.id
+          ), 0) AS refunded_minor
+        FROM sales s WHERE s.id = ?
+        ''',
+        [saleId],
+      );
+      final saleTotal = requiredInt(saleTotals.single, 'total_minor');
+      final refundedMinor = requiredInt(saleTotals.single, 'refunded_minor');
+      if (refundedMinor + refundMinor > saleTotal) {
+        throw StateError('Refund total cannot exceed the original sale total.');
+      }
+      final costPriceMinor = requiredInt(item, 'cost_price_minor');
+      final newReturnedCostMinor =
+          ((alreadyReturned + quantity) * costPriceMinor).round() -
+          returnedCostMinor;
 
       final result = ProductReturn(
         saleId: saleId,
         saleItemId: saleItemId,
         productId: productId,
         quantity: quantity,
+        refundMinor: refundMinor,
+        returnedCostMinor: newReturnedCostMinor,
         date: returnedAt,
         note: _cleanNote(note),
       );
@@ -182,8 +214,9 @@ class InventoryRepository {
         'Insufficient stock: this operation would make inventory negative.',
       );
     }
-    final normalizedNewQuantity =
-        newQuantity.abs() < 0.000001 ? 0.0 : newQuantity;
+    final normalizedNewQuantity = newQuantity.abs() < 0.000001
+        ? 0.0
+        : newQuantity;
     await transaction.update(
       'products',
       {
@@ -225,7 +258,11 @@ class InventoryRepository {
 
   static void _validateMovement(double quantity, String reason) {
     if (!quantity.isFinite || quantity == 0) {
-      throw ArgumentError.value(quantity, 'quantity', 'Must be finite and non-zero.');
+      throw ArgumentError.value(
+        quantity,
+        'quantity',
+        'Must be finite and non-zero.',
+      );
     }
     if (reason.trim().isEmpty) {
       throw ArgumentError.value(reason, 'reason', 'Must not be empty.');

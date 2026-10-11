@@ -11,6 +11,7 @@ class AppTextField extends StatelessWidget {
     this.textInputAction,
     this.validator,
     this.onChanged,
+    this.onSubmitted,
     this.obscureText = false,
     this.maxLines = 1,
     this.enabled = true,
@@ -26,6 +27,7 @@ class AppTextField extends StatelessWidget {
   final TextInputAction? textInputAction;
   final FormFieldValidator<String>? validator;
   final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
   final bool obscureText;
   final int maxLines;
   final bool enabled;
@@ -44,6 +46,7 @@ class AppTextField extends StatelessWidget {
       textInputAction: textInputAction,
       validator: validator,
       onChanged: onChanged,
+      onFieldSubmitted: onSubmitted,
       obscureText: obscureText,
       maxLines: obscureText ? 1 : maxLines,
       enabled: enabled,

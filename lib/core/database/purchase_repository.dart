@@ -3,6 +3,9 @@ import 'package:sqflite/sqflite.dart';
 import 'models/model_utils.dart';
 import 'models/purchase.dart';
 import 'models/purchase_item.dart';
+import 'models/debt.dart';
+import 'models/payment.dart';
+import 'models/sale_tender.dart';
 import 'inventory_repository.dart';
 import 'sqlite_entity_repository.dart';
 
@@ -23,9 +26,66 @@ class PurchaseRepository {
   final InventoryRepository _inventory;
   final SqliteEntityRepository<_PurchaseRow> _purchases;
 
+  Future<void> checkout(
+    Purchase purchase, {
+    required List<SaleTender> tenders,
+  }) => _database.transaction((transaction) async {
+    if (purchase.status != 'received') {
+      throw ArgumentError('A checkout purchase must have received status.');
+    }
+    if (tenders.any((tender) => tender.amountMinor <= 0)) {
+      throw ArgumentError('Every purchase tender must be greater than zero.');
+    }
+    final paidMinor = tenders.fold<int>(
+      0,
+      (total, tender) => total + tender.amountMinor,
+    );
+    if (paidMinor > purchase.totalMinor) {
+      throw ArgumentError('Payment total cannot exceed the purchase total.');
+    }
+    final unpaidMinor = purchase.totalMinor - paidMinor;
+    if (unpaidMinor > 0 && purchase.supplierId == null) {
+      throw ArgumentError(
+        'A supplier is required for unpaid purchase balance.',
+      );
+    }
+
+    await _validateSupplier(purchase, transaction);
+    await _createInTransaction(purchase, transaction);
+    for (final tender in tenders) {
+      await transaction.insert(
+        'payments',
+        Payment(
+          purchaseId: purchase.id,
+          amountMinor: tender.amountMinor,
+          method: tender.method,
+          date: purchase.date,
+        ).toMap(),
+        conflictAlgorithm: ConflictAlgorithm.abort,
+      );
+    }
+    if (unpaidMinor > 0) {
+      await transaction.insert(
+        'debts',
+        Debt(
+          supplierId: purchase.supplierId,
+          purchaseId: purchase.id,
+          direction: DebtDirection.payable,
+          amountMinor: unpaidMinor,
+          dueDate: purchase.date.add(const Duration(days: 30)),
+          description: 'Unpaid balance for purchase ${purchase.id}',
+          createdAt: purchase.date,
+          updatedAt: purchase.date,
+        ).toMap(),
+        conflictAlgorithm: ConflictAlgorithm.abort,
+      );
+    }
+  });
+
   Future<void> create(Purchase purchase) =>
       _database.transaction((transaction) async {
         _validateItems(purchase);
+        await _validateSupplier(purchase, transaction);
         await _purchases.create(
           _PurchaseRow(purchase.toMap()),
           transaction: transaction,
@@ -49,6 +109,49 @@ class PurchaseRepository {
           );
         }
       });
+
+  Future<void> _createInTransaction(
+    Purchase purchase,
+    Transaction transaction,
+  ) async {
+    _validateItems(purchase);
+    await _purchases.create(
+      _PurchaseRow(purchase.toMap()),
+      transaction: transaction,
+    );
+    for (final item in purchase.items) {
+      await _inventory.recordStockChange(
+        transaction,
+        productId: item.productId,
+        quantity: item.quantity,
+        reason: 'purchase',
+        date: purchase.date,
+        sourceType: 'purchase',
+        sourceId: purchase.id,
+      );
+      await transaction.insert(
+        'purchase_items',
+        item.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.abort,
+      );
+    }
+  }
+
+  Future<void> _validateSupplier(
+    Purchase purchase,
+    Transaction transaction,
+  ) async {
+    final supplierId = purchase.supplierId;
+    if (supplierId == null) return;
+    final rows = await transaction.query(
+      'suppliers',
+      columns: ['id'],
+      where: 'id = ?',
+      whereArgs: [supplierId],
+      limit: 1,
+    );
+    if (rows.isEmpty) throw StateError('Supplier was not found.');
+  }
 
   Future<Purchase?> getById(String id) async {
     final purchase = await _purchases.getById(id);

@@ -53,6 +53,8 @@ class AppLocalizations {
   String get newSale => isArabic ? 'بيع جديد' : 'New sale';
   String get noSales => isArabic ? 'لا توجد مبيعات بعد' : 'No sales yet';
   String get saleDetails => isArabic ? 'تفاصيل البيع' : 'Sale details';
+  String get shareReceipt => isArabic ? 'مشاركة الإيصال' : 'Share receipt';
+  String get printReceipt => isArabic ? 'طباعة الإيصال' : 'Print receipt';
   String get saleNotFound =>
       isArabic ? 'لم يتم العثور على البيع' : 'Sale not found';
   String get saleNumber => isArabic ? 'فاتورة رقم' : 'Sale #';
@@ -68,6 +70,60 @@ class AppLocalizations {
   String get walkInCustomer =>
       isArabic ? 'عميل نقدي / بدون عميل' : 'Walk-in customer';
   String get paymentMethod => isArabic ? 'طريقة الدفع' : 'Payment method';
+  String get supplier => isArabic ? 'المورد' : 'Supplier';
+  String get businessManagement =>
+      isArabic ? 'إدارة النشاط' : 'Business management';
+  String get name => isArabic ? 'الاسم' : 'Name';
+  String get address => isArabic ? 'العنوان' : 'Address';
+  String get notes => isArabic ? 'ملاحظات' : 'Notes';
+  String get quantity => isArabic ? 'الكمية' : 'Quantity';
+  String get edit => isArabic ? 'تعديل' : 'Edit';
+  String get close => isArabic ? 'إغلاق' : 'Close';
+  String get supplierManagement =>
+      isArabic ? 'إدارة الموردين' : 'Supplier management';
+  String get customerManagement =>
+      isArabic ? 'إدارة العملاء' : 'Customer management';
+  String get addCustomer => isArabic ? 'إضافة عميل' : 'Add customer';
+  String get editCustomer => isArabic ? 'تعديل العميل' : 'Edit customer';
+  String get addSupplier => isArabic ? 'إضافة مورد' : 'Add supplier';
+  String get editSupplier => isArabic ? 'تعديل المورد' : 'Edit supplier';
+  String get noCustomers => isArabic ? 'لا يوجد عملاء بعد' : 'No customers yet';
+  String get noSuppliers =>
+      isArabic ? 'لا يوجد موردون بعد' : 'No suppliers yet';
+  String get totalPurchases =>
+      isArabic ? 'إجمالي التعاملات' : 'Total purchases';
+  String get totalPaid => isArabic ? 'إجمالي المدفوع' : 'Total paid';
+  String get outstandingBalance => isArabic ? 'الرصيد المستحق' : 'Outstanding';
+  String get transactionHistory =>
+      isArabic ? 'سجل التعاملات' : 'Transaction history';
+  String get transactionPayment =>
+      isArabic ? 'دفعة على معاملة' : 'Transaction payment';
+  String get noTransactionHistory =>
+      isArabic ? 'لا توجد تعاملات بعد' : 'No transactions yet';
+  String get debtHistory => isArabic ? 'سجل الديون' : 'Debt history';
+  String get addDebt => isArabic ? 'إضافة دين' : 'Add debt';
+  String get recordPayment => isArabic ? 'تسجيل دفعة' : 'Record payment';
+  String get debtAmount => isArabic ? 'مبلغ الدين' : 'Debt amount';
+  String get paymentAmount => isArabic ? 'مبلغ الدفعة' : 'Payment amount';
+  String get recordedDebtPayment =>
+      isArabic ? 'دفعة مسجلة للدين' : 'Debt payment';
+  String get manualDebt => isArabic ? 'دين يدوي' : 'Manual debt';
+  String get noOutstandingDebt =>
+      isArabic ? 'لا يوجد رصيد مستحق للسداد' : 'No outstanding balance to pay';
+  String get purchaseTitle => isArabic ? 'المشتريات' : 'Purchases';
+  String get newPurchase => isArabic ? 'شراء جديد' : 'New purchase';
+  String get recordPurchase => isArabic ? 'تسجيل الشراء' : 'Record purchase';
+  String get noPurchases =>
+      isArabic ? 'لا توجد مشتريات بعد' : 'No purchases yet';
+  String get walkInSupplier =>
+      isArabic ? 'بدون مورد مسجل' : 'No supplier selected';
+  String get unpaidAmount => isArabic ? 'المبلغ غير المدفوع' : 'Unpaid amount';
+  String get paymentExceedsTotal => isArabic
+      ? 'لا يمكن أن يتجاوز المبلغ المدفوع إجمالي الشراء.'
+      : 'Payment cannot exceed the purchase total.';
+  String get supplierRequiredForDebt => isArabic
+      ? 'اختر مورداً لتسجيل المبلغ غير المدفوع كدين.'
+      : 'Select a supplier to record an unpaid balance.';
   String get cash => isArabic ? 'نقداً' : 'Cash';
   String get card => isArabic ? 'بطاقة' : 'Card';
   String get wallet => isArabic ? 'محفظة إلكترونية' : 'Wallet';
@@ -131,6 +187,89 @@ class AppLocalizations {
       : 'When disabled, sales and adjustments that exceed available stock are rejected.';
   String get stockAdjusted => isArabic ? 'تمت تسوية المخزون' : 'Stock adjusted';
   String get reports => isArabic ? 'التقارير' : 'Reports';
+  String get analytics => isArabic ? 'التحليلات' : 'Analytics';
+  String get reportTitle =>
+      isArabic ? 'تقرير النشاط التجاري' : 'Business report';
+  String get dateRange => isArabic ? 'الفترة' : 'Date range';
+  String get metric => isArabic ? 'المؤشر' : 'Metric';
+  String get amount => isArabic ? 'المبلغ' : 'Amount';
+  String get grossSales => isArabic ? 'إجمالي المبيعات' : 'Gross sales';
+  String get netSales => isArabic ? 'صافي المبيعات' : 'Net sales';
+  String get refunds => isArabic ? 'المرتجعات' : 'Refunds';
+  String get costOfGoods =>
+      isArabic ? 'تكلفة البضاعة المباعة' : 'Cost of goods sold';
+  String get grossProfit => isArabic ? 'إجمالي الربح' : 'Gross profit';
+  String get netProfit => isArabic ? 'صافي الربح' : 'Net profit';
+  String get expenses => isArabic ? 'المصروفات' : 'Expenses';
+  String get expenseCategory => isArabic ? 'بند المصروف' : 'Expense category';
+  String get profit => isArabic ? 'الربح' : 'Profit';
+  String get productPerformance =>
+      isArabic ? 'أداء المنتجات' : 'Product performance';
+  String get daily => isArabic ? 'يومي' : 'Daily';
+  String get weekly => isArabic ? 'أسبوعي' : 'Weekly';
+  String get monthly => isArabic ? 'شهري' : 'Monthly';
+  String get yearly => isArabic ? 'سنوي' : 'Yearly';
+  String get salesOverTime => isArabic
+      ? 'المبيعات والأرباح والمصروفات عبر الزمن'
+      : 'Sales, profit and expenses over time';
+  String get leastSellingProducts =>
+      isArabic ? 'الأقل مبيعاً' : 'Least-selling products';
+  String get highestProfitProducts =>
+      isArabic ? 'الأعلى ربحاً' : 'Highest-profit products';
+  String get customerAnalysis =>
+      isArabic ? 'تحليل مشتريات العملاء' : 'Customer purchase analysis';
+  String get inventoryValue => isArabic ? 'قيمة المخزون' : 'Inventory value';
+  String get costValue => isArabic ? 'القيمة بالتكلفة' : 'Cost value';
+  String get retailValue => isArabic ? 'القيمة بسعر البيع' : 'Retail value';
+  String get customerDebt => isArabic ? 'ديون العملاء' : 'Customer debts';
+  String get supplierDebt => isArabic ? 'ديون الموردين' : 'Supplier debts';
+  String get exportCsv => isArabic ? 'تصدير CSV' : 'Export CSV';
+  String get exportPdf => isArabic ? 'تصدير PDF' : 'Export PDF';
+  String get generatedReportNotice => isArabic
+      ? 'تم إنشاء التقرير من البيانات المسجلة دون تنبؤات.'
+      : 'Generated from recorded transactions; no forecasts included.';
+  String get noReportData =>
+      isArabic ? 'لا توجد بيانات لهذه الفترة' : 'No data for this period';
+  String get searchAnalytics =>
+      isArabic ? 'ابحث في التحليلات' : 'Search analytics';
+  String get applyFilters => isArabic ? 'تطبيق عوامل التصفية' : 'Apply filters';
+  String get salesOverTimeLabel => isArabic ? 'المبيعات' : 'Sales';
+  String get profitOverTimeLabel => isArabic ? 'الأرباح' : 'Profit';
+  String get expensesOverTimeLabel => isArabic ? 'المصروفات' : 'Expenses';
+  String get globalSearch => isArabic ? 'بحث شامل' : 'Global search';
+  String get searchEverything => isArabic
+      ? 'ابحث في المنتجات والعملاء والمبيعات...'
+      : 'Search products, customers, sales...';
+  String get purchasesTitle => isArabic ? 'المشتريات' : 'Purchases';
+  String get paymentStatus => isArabic ? 'حالة الدفع' : 'Payment status';
+  String get allRecords => isArabic ? 'كل السجلات' : 'All records';
+  String get paidInFull => isArabic ? 'مدفوع بالكامل' : 'Paid in full';
+  String get partiallyPaid => isArabic ? 'مدفوع جزئياً' : 'Partially paid';
+  String get unpaidOnly => isArabic ? 'غير مدفوع' : 'Unpaid';
+  String get stockStatus => isArabic ? 'حالة المخزون' : 'Stock status';
+  String get inStock => isArabic ? 'متوفر' : 'In stock';
+  String get category => isArabic ? 'التصنيف' : 'Category';
+  String get outOfStock => isArabic ? 'نفد المخزون' : 'Out of stock';
+  String get noSearchResults =>
+      isArabic ? 'لا توجد نتائج مطابقة' : 'No matching results';
+  String get salesSection => isArabic ? 'المبيعات' : 'Sales';
+  String get productsSection => isArabic ? 'المنتجات' : 'Products';
+  String get customersSection => isArabic ? 'العملاء' : 'Customers';
+  String get suppliersSection => isArabic ? 'الموردون' : 'Suppliers';
+  String get purchasesSection => isArabic ? 'المشتريات' : 'Purchases';
+  String get dashboardTodayProfit => isArabic ? 'ربح اليوم' : "Today's profit";
+  String get dashboardTodayExpenses =>
+      isArabic ? 'مصروفات اليوم' : "Today's expenses";
+  String get dashboardTodayNetProfit =>
+      isArabic ? 'صافي ربح اليوم' : "Today's net profit";
+  String get totalProducts => isArabic ? 'إجمالي المنتجات' : 'Total products';
+  String get customerOutstanding =>
+      isArabic ? 'ديون العملاء المستحقة' : 'Customer balances due';
+  String get supplierOutstanding =>
+      isArabic ? 'مستحقات الموردين' : 'Supplier balances due';
+  String get noRecentSales =>
+      isArabic ? 'لا توجد مبيعات حديثة' : 'No recent sales';
+  String get chooseDateRange => isArabic ? 'اختر الفترة' : 'Choose date range';
   String get settings => isArabic ? 'الإعدادات' : 'Settings';
   String get search => isArabic ? 'ابحث عن عملية أو عميل' : 'Search activity';
   String get completed => isArabic ? 'مكتملة' : 'Completed';
@@ -139,6 +278,7 @@ class AppLocalizations {
   String get hourAgo => isArabic ? 'منذ ساعة' : '1 hour ago';
   String get hoursAgo => isArabic ? 'منذ ٣ ساعات' : '3 hours ago';
   String get todaySales => isArabic ? 'مبيعات اليوم' : "Today's sales";
+  String get loading => isArabic ? 'جارٍ التحميل' : 'Loading';
   String get monthlyRevenue =>
       isArabic ? 'الإيرادات هذا الشهر' : 'Revenue this month';
   String get viewMode => isArabic ? 'تغيير المظهر' : 'Toggle appearance';
@@ -159,6 +299,60 @@ class AppLocalizations {
   String get profileSaveFailed => isArabic
       ? 'تعذر حفظ الملف الشخصي. حاول مرة أخرى.'
       : 'Could not save the profile. Please try again.';
+  String get notifications => isArabic ? 'الإشعارات' : 'Notifications';
+  String get notifyLowStock =>
+      isArabic ? 'التنبيه عند انخفاض المخزون' : 'Low-stock alerts';
+  String get notifyOutOfStock =>
+      isArabic ? 'التنبيه عند نفاد المخزون' : 'Out-of-stock alerts';
+  String get notifyUnpaidDebts => isArabic
+      ? 'التنبيه عن ديون العملاء والموردين'
+      : 'Unpaid customer/supplier balances';
+  String get notifyOverduePayments => isArabic
+      ? 'التنبيه عن دفعات العملاء والموردين المتأخرة'
+      : 'Overdue customer/supplier payments';
+  String get notifyDailySales =>
+      isArabic ? 'ملخص المبيعات اليومي' : 'Daily sales summary';
+  String get dailySalesNotificationTiming => isArabic
+      ? 'يظهر ملخص الأمس عند فتح التطبيق في يوم جديد.'
+      : 'Yesterday’s summary appears when you open the app on a new day.';
+  String get notificationPermissionDenied => isArabic
+      ? 'لم يتم منح إذن الإشعارات. يمكنك تفعيله من إعدادات الجهاز.'
+      : 'Notification permission was not granted. You can enable it in device settings.';
+  String get notificationPermissionFailed => isArabic
+      ? 'تعذر طلب إذن الإشعارات. حاول مرة أخرى.'
+      : 'Could not request notification permission. Please try again.';
+  String get backupTitle => isArabic ? 'النسخ الاحتياطي' : 'Backup';
+  String get latestBackup => isArabic ? 'آخر نسخة احتياطية' : 'Latest backup';
+  String get noBackupCreated =>
+      isArabic ? 'لم يتم إنشاء نسخة احتياطية بعد.' : 'No backup created yet.';
+  String get backupPrivacyNotice => isArabic
+      ? 'تتضمن النسخة بيانات النشاط والعملاء. اختر مكاناً آمناً عند مشاركتها.'
+      : 'Backups contain business and customer data. Choose a safe destination when sharing.';
+  String get createAndExportBackup =>
+      isArabic ? 'إنشاء نسخة ومشاركتها' : 'Create and export backup';
+  String get backupCreated =>
+      isArabic ? 'تم إنشاء النسخة الاحتياطية.' : 'Backup created successfully.';
+  String get backupExportFailed => isArabic
+      ? 'تم حفظ النسخة على الجهاز، لكن تعذرت مشاركتها.'
+      : 'The backup was saved on this device, but could not be shared.';
+  String get backupStatusUnavailable => isArabic
+      ? 'تعذر التحقق من آخر نسخة احتياطية.'
+      : 'Could not check the latest backup.';
+  String get backupFailed => isArabic
+      ? 'تعذر إنشاء النسخة أو مشاركتها.'
+      : 'Could not create or export the backup.';
+  String get restoreBackup =>
+      isArabic ? 'استعادة نسخة احتياطية' : 'Restore backup';
+  String get restoreBackupWarning => isArabic
+      ? 'سيتم استبدال جميع البيانات الحالية بالنسخة المختارة. لا يمكن التراجع عن ذلك. تأكد من إنشاء نسخة من بياناتك الحالية أولاً.'
+      : 'All current data will be replaced by the selected backup. This cannot be undone. Consider creating a backup of current data first.';
+  String get restore => isArabic ? 'استعادة' : 'Restore';
+  String get backupInvalid => isArabic
+      ? 'النسخة تالفة أو غير متوافقة؛ لم يتم تغيير بياناتك.'
+      : 'The backup is corrupt or incompatible; your data was not changed.';
+  String get restoreFailed => isArabic
+      ? 'تعذرت الاستعادة وتمت حماية البيانات الحالية.'
+      : 'Restore failed and your current data was protected.';
   String get egyptianPound => isArabic ? 'جنيه مصري' : 'Egyptian pound';
   String get usDollar => isArabic ? 'دولار أمريكي' : 'US dollar';
   String get euro => isArabic ? 'يورو' : 'Euro';

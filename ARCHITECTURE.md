@@ -4,7 +4,8 @@
 
 The application is an Arabic-first, offline-first Flutter app. Implemented
 vertical slices include local account settings, product/category management,
-inventory management, and a point-of-sale flow with payment/debt recording.
+inventory management, point of sale, customer and supplier accounts, purchases,
+financial analytics, search, and report export.
 
 ## Folder structure
 
@@ -33,7 +34,7 @@ lib/
     expenses/                   Expenses
     analytics/                  Profit, loss, and trends
     reports/                    Reports and export
-    settings/                   Profile, backup, restore, and preferences
+    account/                     Business profile, alerts, backup, and restore
 ```
 
 The database models and repositories provide typed persistence boundaries.
@@ -94,40 +95,95 @@ payments can be expanded without changing the sale schema. The initial UI
 offers cash, card, wallet, or fully unpaid checkout. Sale item price and cost
 snapshots are read from the current product when checkout begins; later product
 edits do not alter historical sale details. Sale details form a readable
-receipt view; device printing and sharing are deferred.
+receipt view that can be shared through the platform share sheet or printed
+through the platform print dialog. Printing rasterizes the rendered receipt so
+Arabic product names and right-to-left layout are preserved.
+
+Purchase checkout records received quantities, purchase-time unit cost, tender
+payments, and supplier payables atomically. Customer receivables and supplier
+payables are separate debt directions. Partial and full debt payments are
+stored as payment transactions; account totals and outstanding balances are
+calculated from sales or purchases, debts, and payments rather than saved as
+mutable customer or supplier totals. Customer and supplier screens expose
+transaction and debt histories.
+
+`FinancialService` is the single source for dashboard, trend, report, and
+product/customer performance calculations. Money calculations use integer
+minor units, including deterministic allocation of order-level discounts to
+sale lines. Net sales subtract recorded discounts and explicit return refunds;
+COGS uses the sale-time cost snapshot and is reversed for returned quantities;
+gross profit is net sales minus net COGS, and net profit subtracts operating
+expenses. Customer debt collections and supplier debt payments are exposed as
+cash-flow metrics and never counted again as revenue or expenses. Product
+returns now store the actual refunded amount and a cumulatively rounded
+returned-cost allocation in minor units; upgrades backfill legacy refunds using
+the original sale-line amount as an estimate.
+
+The dashboard loads its daily KPIs, recent sales, stock alerts, outstanding
+balances, and trends from SQLite. Analytics and reports share the same
+financial service and support date ranges, time buckets, and relevant entity
+filters. CSV exports are UTF-8 with a BOM and PDF reports include business
+identity, totals, and product performance. Global search covers products,
+customers, suppliers, sales, and purchases; dedicated sales and purchase
+histories add date, party, and payment-status filters.
+
+CSV fields are quoted and spreadsheet-formula prefixes are neutralized before
+export. Product browsing uses 50-record keyset-free offset pages; other
+histories and search surfaces use bounded queries where configured.
+
+Local notifications are opt-in in profile settings. Stock, customer debt,
+overdue-payment, and previous-day sales summaries are queried from the local
+financial service when the app starts/resumes and every 15 minutes while an
+alert preference is enabled and the app remains in the foreground. Delivery
+fingerprints are stored in SQLite, resolved alerts are cleared, and a six-hour
+cooldown limits repeat alerts. Notification content avoids customer names and
+exact debt amounts. Background scheduling is exposed behind a scheduler
+interface but not enabled; daily summaries appear when the app is opened on a
+new local day.
+
+Backups are created from a consistent SQLite `VACUUM INTO` snapshot and
+streamed into a gzip-compressed `.hdb` envelope containing format/schema
+versions, a timestamp, byte count, and SHA-256 digest. Restore validates the
+archive and database before it closes the active connection. Replacement uses
+a rollback snapshot and returns a reopened database handle. A
+`BackupTransport` port separates local share/file-picker transfer from backup
+creation so another transport can be introduced without requiring cloud
+services. The archive is streamed and limited to a 1 GiB uncompressed database.
+Portable backups are not encrypted in this version.
 
 Repository APIs are storage boundaries for the feature data layers; screens
 should not query SQLite directly. Remote sync can be introduced later without
-coupling features to a backend. Sensitive backup files must be encrypted before
-export; credentials and API keys must not be stored in source code.
+coupling features to a backend. Credentials and API keys must not be stored in
+source code. Exported backup files contain local business data and should be
+stored securely by the user.
 
 ## Navigation
 
-The root route is the dashboard. A bottom navigation shell will be introduced
-with Dashboard, Sales, Products, Customers, and More sections once those
-features exist. Secondary modules (purchases, suppliers, debts, expenses,
-analytics, reports, notifications, settings, and backup) will use named routes
-behind the More section. Navigation guards will be added when authentication or
-business selection is introduced.
+The root route is the dashboard. Sales, products, inventory, reports, and
+global search are available from the dashboard; a business-management menu
+opens customers, suppliers, and purchases. Navigation guards will be added
+when authentication or business selection is introduced.
 
 ## Dependencies
 
-Current dependencies are intentionally minimal:
+Current dependencies include:
 
 - `flutter_localizations`: framework localization delegates and RTL support.
 - `cupertino_icons`: icon compatibility for platform-consistent UI.
+- `sqflite` and `path`: versioned local SQLite storage and database paths.
+- `path_provider`: temporary locations for generated reports.
+- `pdf` and `printing`: generate Arabic-compatible report PDFs and print
+  rasterized sale receipts.
+- `assets/fonts/NotoSansArabic.ttf`: embedded Arabic PDF font under the SIL
+  Open Font License; its license is stored beside the font.
+- `share_plus`: sharing sale receipts through the platform share sheet.
+- `flutter_local_notifications`: opt-in local business alerts.
+- `file_picker`: user-selected local backup restore.
+- `crypto`: backup SHA-256 integrity validation.
 - `flutter_test` and `flutter_lints`: test and static-analysis tooling.
 
-Planned additions when their phases begin:
-
-- `riverpod` / `flutter_riverpod`: feature state management.
-- `sqflite` and `path`: versioned local SQLite storage and database paths.
-- `sqflite_common_ffi`: in-memory SQLite tests on desktop/CI.
-- `intl`: currency and Egypt-aware date formatting.
-- `file_picker` and `share_plus`: user-initiated backup/export flows.
-- `flutter_secure_storage`: protected local secrets, only if needed.
-
-Packages will be added only when used by a real feature and checked for
+`sqflite_common_ffi` provides in-memory SQLite tests on desktop/CI.
+Dependencies are added only when used by a real feature and checked for
 maintenance, platform support, and licensing.
 
 ## Localization and RTL
@@ -140,8 +196,10 @@ hard-coded left/right assumptions.
 
 ## Android readiness
 
-The generated Android project targets the current Flutter stable defaults.
-`flutter doctor` reports that Android SDK command-line tools are missing on this
-machine; installing them through Android Studio or the Android SDK manager is
-required before an Android emulator/device build can run. Web launch is used
-for Phase 1 smoke validation in this environment.
+Android notifications declare the Android 13+ notification permission and use
+core-library desugaring. The app label is Hesabati. The application ID remains
+the template value `com.example.hesabati`, and release signing still uses the
+debug key until the owner configures a private production keystore.
+
+For setup, release, and verification details see
+[docs/RELEASE_CHECKLIST.md](./docs/RELEASE_CHECKLIST.md).

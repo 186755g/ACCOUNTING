@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/database/models/app_settings.dart';
+import '../../../core/database/database.dart';
 import '../../../core/localization/app_localizations.dart';
 import '../../../core/widgets/app_widgets.dart';
+import '../../reports/presentation/reports_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({
+    required this.loadDashboard,
     required this.isDarkMode,
     required this.settings,
     required this.onLocaleChanged,
@@ -14,9 +16,17 @@ class DashboardScreen extends StatefulWidget {
     required this.onSalesPressed,
     required this.onInventoryPressed,
     required this.onAccountPressed,
+    required this.onCustomersPressed,
+    required this.onSuppliersPressed,
+    required this.onPurchasesPressed,
+    required this.onReportsPressed,
+    required this.onAnalyticsPressed,
+    required this.onSearchPressed,
+    required this.onSalePressed,
     super.key,
   });
 
+  final DashboardDataLoader loadDashboard;
   final bool isDarkMode;
   final AppSettings settings;
   final Future<void> Function(Locale) onLocaleChanged;
@@ -25,6 +35,13 @@ class DashboardScreen extends StatefulWidget {
   final VoidCallback onSalesPressed;
   final VoidCallback onInventoryPressed;
   final VoidCallback onAccountPressed;
+  final VoidCallback onCustomersPressed;
+  final VoidCallback onSuppliersPressed;
+  final VoidCallback onPurchasesPressed;
+  final VoidCallback onReportsPressed;
+  final VoidCallback onAnalyticsPressed;
+  final ValueChanged<String> onSearchPressed;
+  final ValueChanged<String> onSalePressed;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -33,6 +50,36 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final _searchController = TextEditingController();
   String _query = '';
+  DashboardSummary? _summary;
+  List<FinancialPeriod> _trend = [];
+  bool _loading = true;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboard();
+  }
+
+  Future<void> _loadDashboard() async {
+    try {
+      final data = await widget.loadDashboard(DateTime.now());
+      if (!mounted) return;
+      setState(() {
+        _summary = data.summary;
+        _trend = data.trend;
+        _loading = false;
+        _loadError = null;
+      });
+    } catch (error) {
+      debugPrint('Failed to load dashboard summary: $error');
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = error.toString();
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -104,6 +151,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
               icon: const Icon(Icons.point_of_sale_outlined),
             ),
             IconButton(
+              key: const ValueKey('open-reports'),
+              tooltip: strings.reports,
+              onPressed: widget.onReportsPressed,
+              icon: const Icon(Icons.analytics_outlined),
+            ),
+            PopupMenuButton<String>(
+              key: const ValueKey('open-business-management'),
+              tooltip: strings.businessManagement,
+              onSelected: (value) {
+                switch (value) {
+                  case 'customers':
+                    widget.onCustomersPressed();
+                  case 'suppliers':
+                    widget.onSuppliersPressed();
+                  case 'purchases':
+                    widget.onPurchasesPressed();
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'customers',
+                  child: ListTile(
+                    leading: const Icon(Icons.people_outline),
+                    title: Text(strings.customerManagement),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'suppliers',
+                  child: ListTile(
+                    leading: const Icon(Icons.local_shipping_outlined),
+                    title: Text(strings.supplierManagement),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'purchases',
+                  child: ListTile(
+                    leading: const Icon(Icons.shopping_bag_outlined),
+                    title: Text(strings.purchaseTitle),
+                  ),
+                ),
+              ],
+              icon: const Icon(Icons.more_horiz),
+            ),
+            IconButton(
               tooltip: strings.account,
               onPressed: widget.onAccountPressed,
               padding: const EdgeInsetsDirectional.only(start: 8, end: 20),
@@ -141,8 +232,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     children: [
                       _buildWelcome(context, strings, constraints.maxWidth),
                       const SizedBox(height: 24),
+                      if (_loadError != null)
+                        Card(
+                          child: ListTile(
+                            leading: const Icon(Icons.error_outline),
+                            title: Text(_loadError!),
+                            trailing: IconButton(
+                              onPressed: _loadDashboard,
+                              icon: const Icon(Icons.refresh),
+                            ),
+                          ),
+                        )
+                      else if (_loading)
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Text(strings.loading),
+                        ),
                       _buildStats(context, strings, constraints.maxWidth),
                       const SizedBox(height: 28),
+                      _buildSectionHeading(
+                        context,
+                        title: strings.salesOverTime,
+                        trailing: TextButton(
+                          onPressed: widget.onAnalyticsPressed,
+                          child: Text(strings.analytics),
+                        ),
+                      ),
+                      FinancialTrendChart(
+                        periods: _trend,
+                        currencyCode: widget.settings.currencyCode,
+                        salesLabel: strings.salesOverTimeLabel,
+                        profitLabel: strings.profitOverTimeLabel,
+                        expensesLabel: strings.expensesOverTimeLabel,
+                      ),
+                      const SizedBox(height: 24),
                       _buildSectionHeading(
                         context,
                         title: strings.recentTransactions,
@@ -168,18 +291,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       const SizedBox(height: 12),
                       _buildTransactions(context, strings),
                       const SizedBox(height: 28),
-                      _buildLowerSections(
-                        context,
-                        strings,
-                        constraints.maxWidth,
-                      ),
                       const SizedBox(height: 22),
-                      Text(
-                        strings.demoNotice,
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: widget.onReportsPressed,
+                            icon: const Icon(Icons.description_outlined),
+                            label: Text(strings.reports),
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: widget.onAnalyticsPressed,
+                            icon: const Icon(Icons.insights_outlined),
+                            label: Text(strings.analytics),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -228,6 +354,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         prefixIcon: Icons.search_rounded,
         textInputAction: TextInputAction.search,
         onChanged: (value) => setState(() => _query = value.trim()),
+        onSubmitted: widget.onSearchPressed,
       ),
     );
 
@@ -252,181 +379,113 @@ class _DashboardScreenState extends State<DashboardScreen> {
     AppLocalizations strings,
     double width,
   ) {
-    final columns = width >= 1000
-        ? 4
-        : width >= 600
-        ? 2
-        : 2;
-    final ratio = width < 400 ? 1.15 : 1.35;
+    final summary = _summary;
+    final financial = summary?.financial;
+    String money(int minor) =>
+        '${widget.settings.currencyCode} ${(minor / 100).toStringAsFixed(2)}';
+    final columns = width >= 1000 ? 4 : 2;
     return GridView.count(
       crossAxisCount: columns,
       crossAxisSpacing: 14,
       mainAxisSpacing: 14,
-      childAspectRatio: ratio,
+      childAspectRatio: width < 400 ? 1.25 : 1.55,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       children: [
         StatCard(
-          label: strings.totalSales,
-          value: strings.isArabic ? '٢٤٬٨٥٠ ج.م' : 'EGP 24,850',
+          label: strings.todaySales,
+          value: financial == null ? '—' : money(financial.netSalesMinor),
           icon: Icons.account_balance_wallet_outlined,
-          change: strings.salesChange,
         ),
         StatCard(
-          label: strings.orders,
-          value: strings.isArabic ? '١٢٨' : '128',
-          icon: Icons.receipt_long_outlined,
-          change: strings.ordersChange,
+          label: strings.dashboardTodayProfit,
+          value: financial == null ? '—' : money(financial.grossProfitMinor),
+          icon: Icons.trending_up,
         ),
         StatCard(
-          label: strings.customers,
-          value: strings.isArabic ? '٨٦' : '86',
-          icon: Icons.people_outline_rounded,
-          change: strings.customersChange,
+          label: strings.dashboardTodayExpenses,
+          value: financial == null ? '—' : money(financial.expensesMinor),
+          icon: Icons.payments_outlined,
+        ),
+        StatCard(
+          label: strings.dashboardTodayNetProfit,
+          value: financial == null ? '—' : money(financial.netProfitMinor),
+          icon: Icons.account_balance,
+        ),
+        StatCard(
+          label: strings.totalProducts,
+          value: summary == null ? '—' : '${summary.productCount}',
+          icon: Icons.inventory_2_outlined,
         ),
         StatCard(
           label: strings.lowStock,
-          value: strings.isArabic ? '٠٤' : '04',
+          value: summary == null ? '—' : '${summary.lowStockCount}',
           icon: Icons.inventory_2_outlined,
-          change: strings.inventoryAttention,
           isPositive: false,
+        ),
+        StatCard(
+          label: strings.customerOutstanding,
+          value: summary == null
+              ? '—'
+              : money(summary.customerOutstandingMinor),
+          icon: Icons.person_outline,
+        ),
+        StatCard(
+          label: strings.supplierOutstanding,
+          value: summary == null
+              ? '—'
+              : money(summary.supplierOutstandingMinor),
+          icon: Icons.local_shipping_outlined,
         ),
       ],
     );
   }
 
   Widget _buildTransactions(BuildContext context, AppLocalizations strings) {
-    final transactions =
-        [
-          (
-            title: strings.isArabic ? 'بيع مباشر' : 'In-store sale',
-            subtitle:
-                '${strings.minutesAgo} · ${strings.isArabic ? 'أحمد محمد' : 'Ahmed Mohamed'}',
-            amount: strings.isArabic ? '١٬٢٥٠ ج.م' : 'EGP 1,250',
-            status: strings.completed,
-            isIncome: true,
-          ),
-          (
-            title: strings.isArabic ? 'فاتورة #١٠٢٤' : 'Invoice #1024',
-            subtitle:
-                '${strings.hourAgo} · ${strings.isArabic ? 'منى علي' : 'Mona Ali'}',
-            amount: strings.isArabic ? '٨٥٠ ج.م' : 'EGP 850',
-            status: strings.pending,
-            isIncome: true,
-          ),
-          (
-            title: strings.isArabic ? 'شراء مخزون' : 'Stock purchase',
-            subtitle:
-                '${strings.hoursAgo} · ${strings.isArabic ? 'مورد النور' : 'Al Noor supplier'}',
-            amount: strings.isArabic ? '٣٬٤٠٠ ج.م' : 'EGP 3,400',
-            status: strings.completed,
-            isIncome: false,
-          ),
-        ].where((transaction) {
-          if (_query.isEmpty) return true;
-          final query = _query.toLowerCase();
-          return transaction.title.toLowerCase().contains(query) ||
-              transaction.subtitle.toLowerCase().contains(query);
-        }).toList();
+    final sales = (_summary?.recentSales ?? [])
+        .where(
+          (sale) =>
+              _query.isEmpty ||
+              sale.id.toLowerCase().contains(_query.toLowerCase()) ||
+              (sale.customerName ?? '').toLowerCase().contains(
+                _query.toLowerCase(),
+              ),
+        )
+        .toList(growable: false);
 
-    if (transactions.isEmpty) {
+    if (sales.isEmpty) {
       return EmptyState(
-        title: strings.isArabic ? 'لا توجد نتائج' : 'No results found',
+        title: _query.isEmpty ? strings.noRecentSales : strings.noSearchResults,
         message: strings.isArabic
-            ? 'جرّب البحث بكلمة أخرى.'
-            : 'Try searching for something else.',
+            ? 'ستظهر المبيعات المسجلة هنا.'
+            : 'Recorded sales will appear here.',
         icon: Icons.search_off_rounded,
       );
     }
 
     return Column(
       children: [
-        for (var index = 0; index < transactions.length; index++) ...[
-          TransactionCard(
-            title: transactions[index].title,
-            subtitle: transactions[index].subtitle,
-            amount: transactions[index].amount,
-            status: transactions[index].status,
-            isIncome: transactions[index].isIncome,
+        for (final sale in sales)
+          Card(
+            child: ListTile(
+              leading: const CircleAvatar(
+                child: Icon(Icons.receipt_long_outlined),
+              ),
+              title: Text(
+                '${strings.saleNumber} '
+                '${sale.id.substring(0, sale.id.length < 8 ? sale.id.length : 8)}',
+              ),
+              subtitle: Text(
+                '${sale.customerName?.isNotEmpty == true ? sale.customerName : strings.walkInCustomer}'
+                ' · ${sale.date.toLocal().toString().split('.').first}',
+              ),
+              trailing: Text(
+                '${widget.settings.currencyCode} '
+                '${(sale.totalMinor / 100).toStringAsFixed(2)}',
+              ),
+              onTap: () => widget.onSalePressed(sale.id),
+            ),
           ),
-          if (index != transactions.length - 1) const SizedBox(height: 10),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildLowerSections(
-    BuildContext context,
-    AppLocalizations strings,
-    double width,
-  ) {
-    final products = _buildProducts(context, strings);
-    final customers = _buildCustomers(context, strings);
-    if (width < 800) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [products, const SizedBox(height: 22), customers],
-      );
-    }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(child: products),
-        const SizedBox(width: 18),
-        Expanded(child: customers),
-      ],
-    );
-  }
-
-  Widget _buildProducts(BuildContext context, AppLocalizations strings) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildSectionHeading(context, title: strings.bestSellingProducts),
-        const SizedBox(height: 12),
-        ProductCard(
-          name: strings.isArabic ? 'قهوة مختصة' : 'Specialty coffee',
-          category: strings.isArabic ? 'مشروبات' : 'Beverages',
-          price: strings.isArabic ? '١٨٠ ج.م' : 'EGP 180',
-          stockLabel: strings.isArabic ? 'متبقي ٤' : '4 left',
-          icon: Icons.coffee_outlined,
-          isLowStock: true,
-        ),
-        const SizedBox(height: 10),
-        ProductCard(
-          name: strings.isArabic ? 'كوب حراري' : 'Travel mug',
-          category: strings.isArabic ? 'إكسسوارات' : 'Accessories',
-          price: strings.isArabic ? '٣٥٠ ج.م' : 'EGP 350',
-          stockLabel: strings.isArabic ? 'متوفر ٢٤' : '24 in stock',
-          icon: Icons.local_cafe_outlined,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCustomers(BuildContext context, AppLocalizations strings) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildSectionHeading(context, title: strings.topCustomers),
-        const SizedBox(height: 12),
-        CustomerCard(
-          name: strings.isArabic ? 'أحمد محمد' : 'Ahmed Mohamed',
-          subtitle: strings.isArabic
-              ? 'آخر عملية · اليوم'
-              : 'Last order · Today',
-          amount: strings.isArabic ? '٤٬٥٠٠ ج.م' : 'EGP 4,500',
-          initials: strings.isArabic ? 'أم' : 'AM',
-        ),
-        const SizedBox(height: 10),
-        CustomerCard(
-          name: strings.isArabic ? 'منى علي' : 'Mona Ali',
-          subtitle: strings.isArabic
-              ? 'آخر عملية · أمس'
-              : 'Last order · Yesterday',
-          amount: strings.isArabic ? '٢٬٨٥٠ ج.م' : 'EGP 2,850',
-          initials: strings.isArabic ? 'مع' : 'MA',
-        ),
       ],
     );
   }
