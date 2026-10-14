@@ -73,17 +73,28 @@ void main() {
     expect((await database.products.getById(product.id))!.categoryId, isNull);
 
     final changes = await database.syncOutbox.getAll();
-    expect(changes.map((change) => change['operation']), [
+    expect(changes.map((change) => change['operation']).toList(), [
+      'create',
       'create',
       'update',
       'delete',
     ]);
-    expect(changes.map((change) => change['entity_type']).toSet(), {
+    expect(changes.map((change) => change['entity_type']).toList(), [
       'category',
-    });
-    expect(changes.map((change) => change['entity_id']).toSet(), {
-      category.id,
-    });
+      'product',
+      'category',
+      'category',
+    ]);
+    expect(changes.where((change) => change['entity_type'] == 'category'), hasLength(3));
+    expect(changes.where((change) => change['entity_type'] == 'product'), hasLength(1));
+    expect(
+      changes.where((change) => change['entity_id'] == category.id),
+      hasLength(3),
+    );
+    expect(
+      changes.where((change) => change['entity_id'] == product.id),
+      hasLength(1),
+    );
     expect(changes.map((change) => change['installation_id']).toSet(), {
       identity,
     });
@@ -91,9 +102,19 @@ void main() {
       changes.map((change) => change['operation_id']).toSet(),
       hasLength(changes.length),
     );
+
+    final categoryDeleteEvent = changes.singleWhere(
+      (change) =>
+          change['entity_type'] == 'category' &&
+          change['operation'] == 'delete',
+    );
     expect(
-      jsonDecode(changes.last['payload_json']! as String)['name'],
+      jsonDecode(categoryDeleteEvent['payload_json']! as String)['name'],
       'Hot drinks',
+    );
+    expect(
+      changes.singleWhere((change) => change['entity_type'] == 'product')['entity_id'],
+      product.id,
     );
   });
 

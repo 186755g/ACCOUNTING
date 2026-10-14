@@ -10,13 +10,14 @@
   background scheduled delivery is not active.
 - Cloud sync/backup is not implemented. Core records, reports, and workflows
   are local and work offline.
-- Schema version 8 introduces a local-only change outbox for category
-  create/update/delete operations. It does not send data, queue existing
-  records, deduplicate operations across devices, or resolve conflicts.
+- Schema version 8 introduces a local-only change outbox that records
+  create/update/delete operations for categories, products, sales, purchases,
+  payments, and debts. It does not send data, queue existing records,
+  deduplicate operations across devices, or resolve conflicts.
 - A local pending row in `sync_outbox` is not evidence of successful delivery or
   server acknowledgement; there is no complete network sync implementation yet.
-- If the installation identity is unavailable, category changes may still be
-  stored locally without creating a journal row. Those edits remain local-only
+- If the installation identity is unavailable, local business changes may still
+  be stored locally without creating a journal row. Those edits remain local-only
   until a dedicated recovery mechanism is implemented and are not replayed
   automatically when the installation identity becomes available again.
 - The installation ID is stored outside the business database and portable

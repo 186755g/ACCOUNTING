@@ -1,7 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 
 import 'models/category.dart';
-import 'models/model_utils.dart';
 import 'sqlite_entity_repository.dart';
 import 'sync_outbox_repository.dart';
 import '../services/installation_identity_store.dart';
@@ -9,11 +8,9 @@ import '../services/installation_identity_store.dart';
 class CategoryRepository {
   CategoryRepository(
     Database database, {
-    required InstallationIdentityStore installationIdentity,
-    required SyncOutboxRepository outbox,
+    required this._installationIdentity,
+    required this._outbox,
   }) : _database = database,
-       _installationIdentity = installationIdentity,
-       _outbox = outbox,
        _repository = SqliteEntityRepository<Category>(
          database,
          table: 'categories',

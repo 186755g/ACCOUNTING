@@ -9,11 +9,9 @@ import 'sync_outbox_repository.dart';
 class PartyAccountRepository {
   PartyAccountRepository(
     Database database, {
-    required InstallationIdentityStore installationIdentity,
-    required SyncOutboxRepository outbox,
-  }) : _database = database,
-       _installationIdentity = installationIdentity,
-       _outbox = outbox;
+    required this._installationIdentity,
+    required this._outbox,
+  }) : _database = database;
 
   final Database _database;
   final InstallationIdentityStore _installationIdentity;

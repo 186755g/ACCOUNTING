@@ -55,13 +55,14 @@ that create inventory schema at the same time.
 
 Version 8 adds the local `sync_outbox` change journal. It starts empty when
 upgrading an existing database and does not backfill existing business rows.
-The category repository writes category create, update, and delete entries in
-the same SQLite transaction as the category change. Entries include a unique
-operation ID, installation ID, entity and operation identifiers, a JSON
-snapshot, insertion sequence, timestamp, and local pending status. A unique
-constraint protects operation IDs within this database; without a server and
-server-side idempotency checks, this is not a guarantee against duplicate
-processing across devices or copied databases.
+Repositories write create, update, and delete journal entries for categories,
+products, sales, purchases, payments, and debts in the same SQLite transaction
+as the underlying business write. Entries include a unique operation ID,
+installation ID, entity and operation identifiers, a JSON snapshot, insertion
+sequence, timestamp, and local pending status. A unique constraint protects
+operation IDs within this database; without a server and server-side
+idempotency checks, this is not a guarantee against duplicate processing
+across devices or copied databases.
 
 This is a local synchronization foundation only, not a complete network-sync
 system. The outbox is for local journaling and future delivery planning; it is
@@ -70,8 +71,8 @@ networked replication protocol. A row in `sync_outbox` should be treated as a
 local pending event, not as proof that a remote server has received or applied
 it.
 
-When the installation identity is unavailable, category changes can still be
-written to the local database, but the app intentionally defers creating a
+When the installation identity is unavailable, local business changes can still
+be written to the database, but the app intentionally defers creating a
 `sync_outbox` entry for that operation. Those local changes are not replayed or
 reconstructed automatically when the installation identity becomes available
 again; they remain a local-only state until a dedicated recovery or sync

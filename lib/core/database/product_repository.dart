@@ -12,11 +12,9 @@ enum ProductSortField { name, stock, purchasePrice, sellingPrice, createdDate }
 class ProductRepository {
   ProductRepository(
     Database database, {
-    required InstallationIdentityStore installationIdentity,
-    required SyncOutboxRepository outbox,
+    required this._installationIdentity,
+    required this._outbox,
   }) : _database = database,
-       _installationIdentity = installationIdentity,
-       _outbox = outbox,
        _inventory = InventoryRepository(database),
        _repository = SqliteEntityRepository<Product>(
          database,

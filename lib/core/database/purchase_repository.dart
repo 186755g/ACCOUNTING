@@ -14,11 +14,9 @@ import 'sync_outbox_repository.dart';
 class PurchaseRepository {
   PurchaseRepository(
     Database database, {
-    required InstallationIdentityStore installationIdentity,
-    required SyncOutboxRepository outbox,
+    required this._installationIdentity,
+    required this._outbox,
   }) : _database = database,
-       _installationIdentity = installationIdentity,
-       _outbox = outbox,
        _inventory = InventoryRepository(database),
        _purchases = SqliteEntityRepository<_PurchaseRow>(
          database,
@@ -336,7 +334,7 @@ class PurchaseRepository {
       };
       await _applyInventory(purchase, transaction, reverse: true);
       final deleted = await _purchases.delete(id, transaction: transaction);
-      if (deleted == 0) return false;
+      if (!deleted) return false;
       if (installationId != null) {
         await _outbox.recordPurchaseChange(
           transaction,
