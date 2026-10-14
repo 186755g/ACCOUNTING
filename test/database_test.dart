@@ -7,17 +7,27 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
   late LocalDatabase database;
+  late Directory installationDirectory;
 
   setUpAll(sqfliteFfiInit);
 
   setUp(() async {
+    installationDirectory = await Directory.systemTemp.createTemp(
+      'hesabati-database-test-',
+    );
     database = await LocalDatabase.open(
       databasePath: inMemoryDatabasePath,
       factory: databaseFactoryFfi,
+      installationIdentity: InstallationIdentityStore(
+        directoryProvider: () async => installationDirectory,
+      ),
     );
   });
 
-  tearDown(() => database.close());
+  tearDown(() async {
+    await database.close();
+    await installationDirectory.delete(recursive: true);
+  });
 
   test('creates all tables with foreign-key enforcement', () async {
     final tableRows = await database.transaction(

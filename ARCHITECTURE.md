@@ -157,6 +157,21 @@ coupling features to a backend. Credentials and API keys must not be stored in
 source code. Exported backup files contain local business data and should be
 stored securely by the user.
 
+The current synchronization foundation is intentionally local-only. Schema
+version 8 provides a `sync_outbox` journal and category create/update/delete
+operations write journal entries in the same SQLite transaction as the
+category change. The journal starts empty for existing databases; no legacy
+business data is queued. There is no network client, server, account system,
+acknowledgment, or conflict resolution yet. Operation IDs are unique within
+one database only and require server-side idempotency before any future
+delivery can be considered safe.
+
+An installation ID is persisted in a separate file under the platform
+application-support directory, outside SQLite snapshots and `.hdb` backup
+files. Android app backup is disabled in the manifest. This does not protect
+against copying the complete private application data directory, and must not
+be treated as a hardware-bound or tamper-proof identity.
+
 ## Navigation
 
 The root route is the dashboard. Sales, products, inventory, reports, and

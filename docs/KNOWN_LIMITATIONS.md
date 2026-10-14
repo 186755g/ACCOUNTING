@@ -10,6 +10,19 @@
   background scheduled delivery is not active.
 - Cloud sync/backup is not implemented. Core records, reports, and workflows
   are local and work offline.
+- Schema version 8 introduces a local-only change outbox for category
+  create/update/delete operations. It does not send data, queue existing
+  records, deduplicate operations across devices, or resolve conflicts.
+- A local pending row in `sync_outbox` is not evidence of successful delivery or
+  server acknowledgement; there is no complete network sync implementation yet.
+- If the installation identity is unavailable, category changes may still be
+  stored locally without creating a journal row. Those edits remain local-only
+  until a dedicated recovery mechanism is implemented and are not replayed
+  automatically when the installation identity becomes available again.
+- The installation ID is stored outside the business database and portable
+  backups. It is not hardware-bound and may be duplicated if the complete
+  private app data directory is copied. Outbox rows are part of `.hdb` database
+  snapshots, so future delivery must define restored-pending-event handling.
 - Product browsing is paginated; some histories and party/report filter
   selectors still use bounded or unpaged reads and may need further tuning for
   very large businesses.

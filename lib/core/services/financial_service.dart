@@ -381,6 +381,7 @@ class FinancialService {
     required DateTime from,
     required DateTime to,
     String? categoryId,
+    String? customerId,
     int? limit,
     bool leastSelling = false,
   }) async {
@@ -407,6 +408,7 @@ class FinancialService {
       FROM adjusted_items si JOIN products p ON p.id = si.product_id
       WHERE si.date_at >= ? AND si.date_at < ?
         AND (? IS NULL OR p.category_id = ?)
+        AND (? IS NULL OR si.customer_id = ?)
       GROUP BY si.product_id, si.product_name
       ORDER BY quantity ${leastSelling ? 'ASC' : 'DESC'}, revenue DESC
       ${limit == null ? '' : 'LIMIT $limit'}
@@ -420,6 +422,8 @@ class FinancialService {
           dateToDatabase(to),
           categoryId,
           categoryId,
+          customerId,
+          customerId,
         ],
       ),
     );

@@ -71,12 +71,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
           from: _from,
           to: _to,
           categoryId: _categoryId,
+          customerId: _customerId,
           limit: 10,
         ),
         financial.getProductPerformance(
           from: _from,
           to: _to,
           categoryId: _categoryId,
+          customerId: _customerId,
           limit: 10,
           leastSelling: true,
         ),
@@ -136,12 +138,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return '$currency ${(minor / 100).toStringAsFixed(2)}';
   }
 
-  Future<void> _exportCsv() async {
-    final report = _report;
-    if (report == null) return;
-    final strings = AppLocalizations.of(context);
+  List<List<String>> _reportRows(
+    AppLocalizations strings,
+    FinancialReport report,
+  ) {
     final summary = report.summary;
-    final rows = <List<String>>[
+    return [
       [strings.reportTitle, _settings?.businessName ?? strings.appName],
       [
         strings.dateRange,
@@ -176,6 +178,99 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ],
       ),
     ];
+  }
+
+  SpreadsheetNumber _xlsxMoney(int minor) {
+    final currencyCode = (_settings?.currencyCode ?? 'EGP').replaceAll(
+      '"',
+      '""',
+    );
+    return SpreadsheetNumber(
+      minor / 100,
+      numberFormat: '"$currencyCode" #,##0.00',
+    );
+  }
+
+  List<List<Object?>> _xlsxReportRows(
+    AppLocalizations strings,
+    FinancialReport report,
+  ) {
+    final summary = report.summary;
+    return [
+      [strings.reportTitle, _settings?.businessName ?? strings.appName],
+      [
+        strings.dateRange,
+        '${_date(_from)} - ${_date(_to.subtract(const Duration(days: 1)))}',
+      ],
+      [],
+      [strings.metric, strings.amount],
+      [strings.grossSales, _xlsxMoney(summary.grossSalesMinor)],
+      [strings.discount, _xlsxMoney(summary.discountsMinor)],
+      [strings.refunds, _xlsxMoney(summary.refundsMinor)],
+      [strings.netSales, _xlsxMoney(summary.netSalesMinor)],
+      [strings.costOfGoods, _xlsxMoney(summary.costOfGoodsMinor)],
+      [strings.grossProfit, _xlsxMoney(summary.grossProfitMinor)],
+      [strings.expenses, _xlsxMoney(summary.expensesMinor)],
+      [strings.netProfit, _xlsxMoney(summary.netProfitMinor)],
+      [strings.customerDebt, _xlsxMoney(report.customerOutstandingMinor)],
+      [strings.supplierDebt, _xlsxMoney(report.supplierOutstandingMinor)],
+      [strings.inventoryValue, _xlsxMoney(report.inventoryCostValueMinor)],
+      [],
+      [strings.expenseCategory, strings.amount],
+      ...report.expensesByCategory.entries.map(
+        (entry) => [entry.key, _xlsxMoney(entry.value)],
+      ),
+      [],
+      [strings.productName, strings.quantity, strings.netSales, strings.profit],
+      ..._topProducts.map(
+        (product) => [
+          product.productName,
+          SpreadsheetNumber(
+            product.quantity,
+            numberFormat: '#,##0.#################',
+          ),
+          _xlsxMoney(product.revenueMinor),
+          _xlsxMoney(product.profitMinor),
+        ],
+      ),
+    ];
+  }
+
+  bool _hasReportData(FinancialReport report) {
+    final summary = report.summary;
+    return report.expensesByCategory.isNotEmpty ||
+        report.products.isNotEmpty ||
+        _topProducts.isNotEmpty ||
+        report.customerOutstandingMinor != 0 ||
+        report.supplierOutstandingMinor != 0 ||
+        report.inventoryCostValueMinor != 0 ||
+        report.inventoryRetailValueMinor != 0 ||
+        [
+          summary.grossSalesMinor,
+          summary.discountsMinor,
+          summary.refundsMinor,
+          summary.costOfGoodsMinor,
+          summary.expensesMinor,
+          summary.grossProfitMinor,
+          summary.netProfitMinor,
+          summary.customerDebtPaymentsMinor,
+          summary.supplierDebtPaymentsMinor,
+        ].any((amount) => amount != 0);
+  }
+
+  void _showExportError(AppLocalizations strings, Object error) {
+    debugPrint('Failed to create spreadsheet report: ${error.runtimeType}');
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(strings.exportFailed(error.toString()))),
+    );
+  }
+
+  Future<void> _exportCsv() async {
+    final report = _report;
+    if (report == null) return;
+    final strings = AppLocalizations.of(context);
+    final rows = _reportRows(strings, report);
     final csv = rows
         .map((row) => row.map(spreadsheetCsvCell).join(','))
         .join('\r\n');
@@ -184,6 +279,32 @@ class _ReportsScreenState extends State<ReportsScreen> {
       bytes: [0xEF, 0xBB, 0xBF, ...utf8.encode(csv)],
       mimeType: 'text/csv',
     );
+  }
+
+  Future<void> _exportXlsx() async {
+    final report = _report;
+    if (report == null) return;
+    final strings = AppLocalizations.of(context);
+    if (!_hasReportData(report)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(strings.noReportData)));
+      return;
+    }
+    try {
+      await _shareFile(
+        name: 'hesabati-report-${_fileDate(_from)}.xlsx',
+        bytes: spreadsheetXlsxBytes(
+          _xlsxReportRows(strings, report),
+          rightToLeft: strings.isArabic,
+        ),
+        mimeType:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        successMessage: strings.reportReadyForSharing,
+      );
+    } catch (error) {
+      _showExportError(strings, error);
+    }
   }
 
   Future<void> _exportPdf() async {
@@ -280,8 +401,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
     required String name,
     required List<int> bytes,
     required String mimeType,
+    String? successMessage,
   }) async {
-    final reportTitle = AppLocalizations.of(context).reportTitle;
+    final strings = AppLocalizations.of(context);
     try {
       final directory = await getTemporaryDirectory();
       final file = File('${directory.path}${Platform.pathSeparator}$name');
@@ -289,14 +411,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
       await SharePlus.instance.share(
         ShareParams(
           files: [XFile(file.path, mimeType: mimeType)],
-          subject: reportTitle,
+          subject: strings.reportTitle,
         ),
       );
+      if (successMessage != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(successMessage)),
+        );
+      }
     } catch (error) {
       debugPrint('Failed to export or share report: ${error.runtimeType}');
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(strings.exportFailed(error.toString()))),
+      );
     }
   }
 
@@ -320,6 +448,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
             tooltip: strings.exportCsv,
             onPressed: report == null ? null : _exportCsv,
             icon: const Icon(Icons.table_view_outlined),
+          ),
+          IconButton(
+            tooltip: strings.exportXlsx,
+            onPressed: report == null ? null : _exportXlsx,
+            icon: const Icon(Icons.grid_on_outlined),
           ),
           IconButton(
             tooltip: strings.exportPdf,

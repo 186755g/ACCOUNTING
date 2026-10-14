@@ -234,6 +234,13 @@ class AppLocalizations {
   String get supplierDebt => isArabic ? 'ديون الموردين' : 'Supplier debts';
   String get exportCsv => isArabic ? 'تصدير CSV' : 'Export CSV';
   String get exportPdf => isArabic ? 'تصدير PDF' : 'Export PDF';
+  String get exportXlsx => isArabic ? 'تصدير Excel' : 'Export Excel';
+  String get reportReadyForSharing => isArabic
+      ? 'تم تجهيز التقرير للمشاركة أو الحفظ'
+      : 'The report is ready to share or save.';
+  String exportFailed(String error) => isArabic
+      ? 'تعذر تصدير التقرير: $error'
+      : 'Failed to export report: $error';
   String get generatedReportNotice => isArabic
       ? 'تم إنشاء التقرير من البيانات المسجلة دون تنبؤات.'
       : 'Generated from recorded transactions; no forecasts included.';

@@ -41,7 +41,7 @@ catalog later changes.
 
 ## Schema migrations
 
-The current schema version is **7** (`LocalDatabase.databaseVersion`).
+The current schema version is **8** (`LocalDatabase.databaseVersion`).
 Increment it for every schema change and add a forward migration in
 `LocalDatabase._upgradeSchema`. Migrations must work from every supported old
 version and preserve data. Fresh schema creation and migration paths must
@@ -52,6 +52,45 @@ Version 7 adds five disabled-by-default notification settings and the
 `notification_deliveries` deduplication table. The table uses
 `CREATE TABLE IF NOT EXISTS` in migration to accommodate older upgrade paths
 that create inventory schema at the same time.
+
+Version 8 adds the local `sync_outbox` change journal. It starts empty when
+upgrading an existing database and does not backfill existing business rows.
+The category repository writes category create, update, and delete entries in
+the same SQLite transaction as the category change. Entries include a unique
+operation ID, installation ID, entity and operation identifiers, a JSON
+snapshot, insertion sequence, timestamp, and local pending status. A unique
+constraint protects operation IDs within this database; without a server and
+server-side idempotency checks, this is not a guarantee against duplicate
+processing across devices or copied databases.
+
+This is a local synchronization foundation only, not a complete network-sync
+system. The outbox is for local journaling and future delivery planning; it is
+not a server sync client, acknowledgment tracker, conflict resolver, or
+networked replication protocol. A row in `sync_outbox` should be treated as a
+local pending event, not as proof that a remote server has received or applied
+it.
+
+When the installation identity is unavailable, category changes can still be
+written to the local database, but the app intentionally defers creating a
+`sync_outbox` entry for that operation. Those local changes are not replayed or
+reconstructed automatically when the installation identity becomes available
+again; they remain a local-only state until a dedicated recovery or sync
+policy is implemented.
+
+The installation ID is stored separately from SQLite at the platform
+application-support location, not in `sync_outbox` or portable `.hdb` backups.
+Android currently disables platform-managed app backup in its manifest.
+Copying the entire private app data directory, reinstalling the app, or
+platforms with different backup behavior are outside this identity guarantee.
+An invalid identity file is reported rather than silently replaced.
+
+The outbox is local-only in this release: there is no network sender,
+acknowledgment, conflict resolution, or legacy-data upload. Portable backup
+and restore still copy/replace the database; they are not synchronization.
+Because `.hdb` snapshots include the outbox table but not the separate
+installation ID, a future sync implementation must explicitly define how to
+handle pending journal rows restored onto another installation before sending
+any of them.
 
 ## Backup format and restore
 

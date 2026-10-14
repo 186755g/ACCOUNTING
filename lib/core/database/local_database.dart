@@ -13,21 +13,26 @@ import 'inventory_repository.dart';
 import 'models/payment.dart';
 import 'models/supplier.dart';
 import 'models/user.dart';
+import 'category_repository.dart';
 import 'party_account_repository.dart';
 import 'purchase_repository.dart';
 import 'product_repository.dart';
 import 'sale_repository.dart';
 import 'sqlite_entity_repository.dart';
+import 'sync_outbox_repository.dart';
+import '../services/installation_identity_store.dart';
 
 class LocalDatabase {
-  LocalDatabase._(this._database, this.databasePath, this._factory)
-    : categories = SqliteEntityRepository<Category>(
+  LocalDatabase._(
+    this._database,
+    this.databasePath,
+    this._factory,
+    this.installationIdentity,
+  ) : syncOutbox = SyncOutboxRepository(_database),
+      categories = CategoryRepository(
         _database,
-        table: 'categories',
-        fromMap: Category.fromMap,
-        searchableColumns: const ['name', 'description'],
-        filterableColumns: const {'id', 'is_archived'},
-        dateColumn: 'created_at',
+        installationIdentity: installationIdentity,
+        outbox: SyncOutboxRepository(_database),
       ),
       products = ProductRepository(_database),
       customers = SqliteEntityRepository<Customer>(
@@ -100,14 +105,16 @@ class LocalDatabase {
       partyAccounts = PartyAccountRepository(_database),
       inventory = InventoryRepository(_database);
 
-  static const databaseVersion = 7;
+  static const databaseVersion = 8;
   static const databaseName = 'hesabati.db';
 
   final Database _database;
   final DatabaseFactory _factory;
   final String databasePath;
+  final InstallationIdentityStore installationIdentity;
 
-  final SqliteEntityRepository<Category> categories;
+  final CategoryRepository categories;
+  final SyncOutboxRepository syncOutbox;
   final ProductRepository products;
   final SaleRepository sales;
   final PurchaseRepository purchases;
@@ -124,8 +131,11 @@ class LocalDatabase {
   static Future<LocalDatabase> open({
     String? databasePath,
     DatabaseFactory? factory,
+    InstallationIdentityStore? installationIdentity,
   }) async {
     final selectedFactory = factory ?? databaseFactory;
+    final selectedInstallationIdentity =
+        installationIdentity ?? InstallationIdentityStore();
     final selectedPath =
         databasePath ?? path.join(await getDatabasesPath(), databaseName);
     final database = await selectedFactory.openDatabase(
@@ -140,7 +150,12 @@ class LocalDatabase {
         onUpgrade: _upgradeSchema,
       ),
     );
-    return LocalDatabase._(database, selectedPath, selectedFactory);
+    return LocalDatabase._(
+      database,
+      selectedPath,
+      selectedFactory,
+      selectedInstallationIdentity,
+    );
   }
 
   Future<void> close() => _database.close();
@@ -159,6 +174,7 @@ class LocalDatabase {
       final restored = await LocalDatabase.open(
         databasePath: databasePath,
         factory: _factory,
+        installationIdentity: installationIdentity,
       );
       await rollbackFile.delete();
       return restored;
@@ -169,6 +185,7 @@ class LocalDatabase {
         final recovered = await LocalDatabase.open(
           databasePath: databasePath,
           factory: _factory,
+          installationIdentity: installationIdentity,
         );
         await rollbackFile.delete();
         throw DatabaseReplacementException(error, recovered);
@@ -353,6 +370,9 @@ class LocalDatabase {
           delivered_at INTEGER NOT NULL
         )
       ''');
+    }
+    if (oldVersion < 8) {
+      await _createSyncOutboxSchema(database);
     }
   }
 
@@ -591,6 +611,32 @@ class LocalDatabase {
     ]) {
       await database.execute(statement);
     }
+    await _createSyncOutboxSchema(database);
+  }
+
+  static Future<void> _createSyncOutboxSchema(
+    DatabaseExecutor database,
+  ) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS sync_outbox (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        operation_id TEXT NOT NULL UNIQUE,
+        installation_id TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        operation TEXT NOT NULL CHECK (
+          operation IN ('create', 'update', 'delete')
+        ),
+        payload_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'acknowledged'))
+      )
+    ''');
+    await database.execute('''
+      CREATE INDEX IF NOT EXISTS idx_sync_outbox_status_created
+      ON sync_outbox(status, sequence)
+    ''');
   }
 
   static Future<void> _createInventorySchema(DatabaseExecutor database) async {

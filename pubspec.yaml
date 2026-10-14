@@ -40,6 +40,7 @@ dependencies:
   share_plus: ^13.3.1
   printing: ^5.15.1
   pdf: ^3.13.1
+  excel: ^4.0.6
   flutter_local_notifications: ^22.3.1
   crypto: ^3.0.7
   file_picker: ^13.1.0
