@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 
+import '../services/installation_identity_store.dart';
 import 'models/model_utils.dart';
 import 'models/purchase.dart';
 import 'models/purchase_item.dart';
@@ -8,66 +9,87 @@ import 'models/payment.dart';
 import 'models/sale_tender.dart';
 import 'inventory_repository.dart';
 import 'sqlite_entity_repository.dart';
+import 'sync_outbox_repository.dart';
 
 class PurchaseRepository {
-  PurchaseRepository(Database database)
-    : _database = database,
-      _inventory = InventoryRepository(database),
-      _purchases = SqliteEntityRepository<_PurchaseRow>(
-        database,
-        table: 'purchases',
-        fromMap: _PurchaseRow.fromMap,
-        searchableColumns: const ['id', 'status', 'notes'],
-        filterableColumns: const {'id', 'supplier_id', 'user_id', 'status'},
-        dateColumn: 'date_at',
-      );
+  PurchaseRepository(
+    Database database, {
+    required InstallationIdentityStore installationIdentity,
+    required SyncOutboxRepository outbox,
+  }) : _database = database,
+       _installationIdentity = installationIdentity,
+       _outbox = outbox,
+       _inventory = InventoryRepository(database),
+       _purchases = SqliteEntityRepository<_PurchaseRow>(
+         database,
+         table: 'purchases',
+         fromMap: _PurchaseRow.fromMap,
+         searchableColumns: const ['id', 'status', 'notes'],
+         filterableColumns: const {'id', 'supplier_id', 'user_id', 'status'},
+         dateColumn: 'date_at',
+       );
 
   final Database _database;
+  final InstallationIdentityStore _installationIdentity;
+  final SyncOutboxRepository _outbox;
   final InventoryRepository _inventory;
   final SqliteEntityRepository<_PurchaseRow> _purchases;
 
   Future<void> checkout(
     Purchase purchase, {
     required List<SaleTender> tenders,
-  }) => _database.transaction((transaction) async {
-    if (purchase.status != 'received') {
-      throw ArgumentError('A checkout purchase must have received status.');
-    }
-    if (tenders.any((tender) => tender.amountMinor <= 0)) {
-      throw ArgumentError('Every purchase tender must be greater than zero.');
-    }
-    final paidMinor = tenders.fold<int>(
-      0,
-      (total, tender) => total + tender.amountMinor,
-    );
-    if (paidMinor > purchase.totalMinor) {
-      throw ArgumentError('Payment total cannot exceed the purchase total.');
-    }
-    final unpaidMinor = purchase.totalMinor - paidMinor;
-    if (unpaidMinor > 0 && purchase.supplierId == null) {
-      throw ArgumentError(
-        'A supplier is required for unpaid purchase balance.',
+  }) async {
+    final installationId = await _installationIdentity.getOrCreateSafe();
+    await _database.transaction((transaction) async {
+      if (purchase.status != 'received') {
+        throw ArgumentError('A checkout purchase must have received status.');
+      }
+      if (tenders.any((tender) => tender.amountMinor <= 0)) {
+        throw ArgumentError('Every purchase tender must be greater than zero.');
+      }
+      final paidMinor = tenders.fold<int>(
+        0,
+        (total, tender) => total + tender.amountMinor,
       );
-    }
+      if (paidMinor > purchase.totalMinor) {
+        throw ArgumentError('Payment total cannot exceed the purchase total.');
+      }
+      final unpaidMinor = purchase.totalMinor - paidMinor;
+      if (unpaidMinor > 0 && purchase.supplierId == null) {
+        throw ArgumentError(
+          'A supplier is required for unpaid purchase balance.',
+        );
+      }
 
-    await _validateSupplier(purchase, transaction);
-    await _createInTransaction(purchase, transaction);
-    for (final tender in tenders) {
-      await transaction.insert(
-        'payments',
-        Payment(
+      await _validateSupplier(purchase, transaction);
+      await _createInTransaction(purchase, transaction);
+      final createdPayments = <Payment>[];
+      for (final tender in tenders) {
+        final payment = Payment(
           purchaseId: purchase.id,
           amountMinor: tender.amountMinor,
           method: tender.method,
           date: purchase.date,
-        ).toMap(),
-        conflictAlgorithm: ConflictAlgorithm.abort,
-      );
-    }
-    if (unpaidMinor > 0) {
-      await transaction.insert(
-        'debts',
-        Debt(
+        );
+        await transaction.insert(
+          'payments',
+          payment.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        createdPayments.add(payment);
+        if (installationId != null) {
+          await _outbox.recordPaymentChange(
+            transaction,
+            installationId: installationId,
+            paymentId: payment.id,
+            operation: 'create',
+            payload: payment.toMap(),
+          );
+        }
+      }
+      Debt? createdDebt;
+      if (unpaidMinor > 0) {
+        createdDebt = Debt(
           supplierId: purchase.supplierId,
           purchaseId: purchase.id,
           direction: DebtDirection.payable,
@@ -76,39 +98,82 @@ class PurchaseRepository {
           description: 'Unpaid balance for purchase ${purchase.id}',
           createdAt: purchase.date,
           updatedAt: purchase.date,
-        ).toMap(),
-        conflictAlgorithm: ConflictAlgorithm.abort,
-      );
-    }
-  });
-
-  Future<void> create(Purchase purchase) =>
-      _database.transaction((transaction) async {
-        _validateItems(purchase);
-        await _validateSupplier(purchase, transaction);
-        await _purchases.create(
-          _PurchaseRow(purchase.toMap()),
-          transaction: transaction,
         );
-        for (final item in purchase.items) {
-          if (purchase.status == 'received') {
-            await _inventory.recordStockChange(
-              transaction,
-              productId: item.productId,
-              quantity: item.quantity,
-              reason: 'purchase',
-              date: purchase.date,
-              sourceType: 'purchase',
-              sourceId: purchase.id,
-            );
-          }
-          await transaction.insert(
-            'purchase_items',
-            item.toMap(),
-            conflictAlgorithm: ConflictAlgorithm.abort,
+        await transaction.insert(
+          'debts',
+          createdDebt.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        if (installationId != null) {
+          await _outbox.recordDebtChange(
+            transaction,
+            installationId: installationId,
+            debtId: createdDebt.id,
+            operation: 'create',
+            payload: createdDebt.toMap(),
           );
         }
-      });
+      }
+      if (installationId != null) {
+        final payload = <String, Object?>{
+          'purchase': purchase.toMap(),
+          'items': purchase.items.map((item) => item.toMap()).toList(),
+          'payments': createdPayments.map((payment) => payment.toMap()).toList(),
+          'debt': createdDebt?.toMap(),
+        };
+        await _outbox.recordPurchaseChange(
+          transaction,
+          installationId: installationId,
+          purchaseId: purchase.id,
+          operation: 'create',
+          payload: payload,
+        );
+      }
+    });
+  }
+
+  Future<void> create(Purchase purchase) async {
+    final installationId = await _installationIdentity.getOrCreateSafe();
+    await _database.transaction((transaction) async {
+      _validateItems(purchase);
+      await _validateSupplier(purchase, transaction);
+      await _purchases.create(
+        _PurchaseRow(purchase.toMap()),
+        transaction: transaction,
+      );
+      for (final item in purchase.items) {
+        if (purchase.status == 'received') {
+          await _inventory.recordStockChange(
+            transaction,
+            productId: item.productId,
+            quantity: item.quantity,
+            reason: 'purchase',
+            date: purchase.date,
+            sourceType: 'purchase',
+            sourceId: purchase.id,
+          );
+        }
+        await transaction.insert(
+          'purchase_items',
+          item.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+      }
+      if (installationId != null) {
+        final payload = <String, Object?>{
+          'purchase': purchase.toMap(),
+          'items': purchase.items.map((item) => item.toMap()).toList(),
+        };
+        await _outbox.recordPurchaseChange(
+          transaction,
+          installationId: installationId,
+          purchaseId: purchase.id,
+          operation: 'create',
+          payload: payload,
+        );
+      }
+    });
+  }
 
   Future<void> _createInTransaction(
     Purchase purchase,
@@ -202,56 +267,88 @@ class PurchaseRepository {
     return Future.wait(rows.map((row) => _hydrate(row.values)));
   }
 
-  Future<void> update(Purchase purchase) => _database.transaction((
-    transaction,
-  ) async {
-    _validateItems(purchase);
-    final existing = await transaction.query(
-      'purchases',
-      where: 'id = ?',
-      whereArgs: [purchase.id],
-      limit: 1,
-    );
-    if (existing.isEmpty) {
-      throw StateError(
-        'Cannot update missing purchases record "${purchase.id}".',
+  Future<void> update(Purchase purchase) async {
+    final installationId = await _installationIdentity.getOrCreateSafe();
+    await _database.transaction((transaction) async {
+      _validateItems(purchase);
+      final existing = await transaction.query(
+        'purchases',
+        where: 'id = ?',
+        whereArgs: [purchase.id],
+        limit: 1,
       );
-    }
-    final previousPurchase = await _hydrate(
-      existing.single,
-      executor: transaction,
-    );
-    await _purchases.update(
-      _PurchaseRow(purchase.toMap()),
-      transaction: transaction,
-    );
-    await transaction.delete(
-      'purchase_items',
-      where: 'purchase_id = ?',
-      whereArgs: [purchase.id],
-    );
-    for (final item in purchase.items) {
-      await transaction.insert(
+      if (existing.isEmpty) {
+        throw StateError(
+          'Cannot update missing purchases record "${purchase.id}".',
+        );
+      }
+      final previousPurchase = await _hydrate(
+        existing.single,
+        executor: transaction,
+      );
+      await _purchases.update(
+        _PurchaseRow(purchase.toMap()),
+        transaction: transaction,
+      );
+      await transaction.delete(
         'purchase_items',
-        item.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.abort,
+        where: 'purchase_id = ?',
+        whereArgs: [purchase.id],
       );
-    }
-    await _applyInventoryDifference(previousPurchase, purchase, transaction);
-  });
+      for (final item in purchase.items) {
+        await transaction.insert(
+          'purchase_items',
+          item.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+      }
+      await _applyInventoryDifference(previousPurchase, purchase, transaction);
+      if (installationId != null && _purchaseHasMeaningfulChange(previousPurchase, purchase)) {
+        final payload = <String, Object?>{
+          'purchase': purchase.toMap(),
+          'items': purchase.items.map((item) => item.toMap()).toList(),
+        };
+        await _outbox.recordPurchaseChange(
+          transaction,
+          installationId: installationId,
+          purchaseId: purchase.id,
+          operation: 'update',
+          payload: payload,
+        );
+      }
+    });
+  }
 
-  Future<bool> delete(String id) => _database.transaction((transaction) async {
-    final rows = await transaction.query(
-      'purchases',
-      where: 'id = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
-    if (rows.isEmpty) return false;
-    final purchase = await _hydrate(rows.single, executor: transaction);
-    await _applyInventory(purchase, transaction, reverse: true);
-    return _purchases.delete(id, transaction: transaction);
-  });
+  Future<bool> delete(String id) async {
+    final installationId = await _installationIdentity.getOrCreateSafe();
+    return _database.transaction((transaction) async {
+      final rows = await transaction.query(
+        'purchases',
+        where: 'id = ?',
+        whereArgs: [id],
+        limit: 1,
+      );
+      if (rows.isEmpty) return false;
+      final purchase = await _hydrate(rows.single, executor: transaction);
+      final payload = <String, Object?>{
+        'purchase': purchase.toMap(),
+        'items': purchase.items.map((item) => item.toMap()).toList(),
+      };
+      await _applyInventory(purchase, transaction, reverse: true);
+      final deleted = await _purchases.delete(id, transaction: transaction);
+      if (deleted == 0) return false;
+      if (installationId != null) {
+        await _outbox.recordPurchaseChange(
+          transaction,
+          installationId: installationId,
+          purchaseId: id,
+          operation: 'delete',
+          payload: payload,
+        );
+      }
+      return true;
+    });
+  }
 
   Future<Purchase> _hydrate(
     Map<String, Object?> row, {
@@ -325,6 +422,36 @@ class PurchaseRepository {
         sourceId: updated.id,
       );
     }
+  }
+
+  bool _purchaseHasMeaningfulChange(Purchase previous, Purchase updated) {
+    if (!_mapsEqual(previous.toMap(), updated.toMap())) {
+      return true;
+    }
+    if (previous.items.length != updated.items.length) {
+      return true;
+    }
+    for (var index = 0; index < previous.items.length; index++) {
+      if (!_mapsEqual(
+        previous.items[index].toMap(),
+        updated.items[index].toMap(),
+      )) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _mapsEqual(Map<String, Object?> left, Map<String, Object?> right) {
+    if (left.length != right.length) {
+      return false;
+    }
+    for (final entry in left.entries) {
+      if (!right.containsKey(entry.key) || right[entry.key] != entry.value) {
+        return false;
+      }
+    }
+    return true;
   }
 
   void _validateItems(Purchase purchase) {

@@ -1,13 +1,23 @@
 import 'package:sqflite/sqflite.dart';
 
+import '../services/installation_identity_store.dart';
 import 'models/debt.dart';
 import 'models/model_utils.dart';
 import 'models/payment.dart';
+import 'sync_outbox_repository.dart';
 
 class PartyAccountRepository {
-  PartyAccountRepository(this._database);
+  PartyAccountRepository(
+    Database database, {
+    required InstallationIdentityStore installationIdentity,
+    required SyncOutboxRepository outbox,
+  }) : _database = database,
+       _installationIdentity = installationIdentity,
+       _outbox = outbox;
 
   final Database _database;
+  final InstallationIdentityStore _installationIdentity;
+  final SyncOutboxRepository _outbox;
 
   Future<PartyAccountSummary> getCustomerSummary(String customerId) =>
       _getSummary(
@@ -68,16 +78,28 @@ class PartyAccountRepository {
     String? description,
     DateTime? dueDate,
   }) async {
-    final debt = Debt(
-      customerId: customerId,
-      direction: DebtDirection.receivable,
-      amountMinor: amountMinor,
-      dueDate: (dueDate ?? DateTime.now().add(const Duration(days: 30)))
-          .toUtc(),
-      description: description,
-    );
-    await _database.insert('debts', debt.toMap());
-    return debt;
+    final installationId = await _installationIdentity.getOrCreateSafe();
+    return _database.transaction((transaction) async {
+      final debt = Debt(
+        customerId: customerId,
+        direction: DebtDirection.receivable,
+        amountMinor: amountMinor,
+        dueDate: (dueDate ?? DateTime.now().add(const Duration(days: 30)))
+            .toUtc(),
+        description: description,
+      );
+      await transaction.insert('debts', debt.toMap());
+      if (installationId != null) {
+        await _outbox.recordDebtChange(
+          transaction,
+          installationId: installationId,
+          debtId: debt.id,
+          operation: 'create',
+          payload: debt.toMap(),
+        );
+      }
+      return debt;
+    });
   }
 
   Future<Debt> addSupplierDebt({
@@ -86,16 +108,28 @@ class PartyAccountRepository {
     String? description,
     DateTime? dueDate,
   }) async {
-    final debt = Debt(
-      supplierId: supplierId,
-      direction: DebtDirection.payable,
-      amountMinor: amountMinor,
-      dueDate: (dueDate ?? DateTime.now().add(const Duration(days: 30)))
-          .toUtc(),
-      description: description,
-    );
-    await _database.insert('debts', debt.toMap());
-    return debt;
+    final installationId = await _installationIdentity.getOrCreateSafe();
+    return _database.transaction((transaction) async {
+      final debt = Debt(
+        supplierId: supplierId,
+        direction: DebtDirection.payable,
+        amountMinor: amountMinor,
+        dueDate: (dueDate ?? DateTime.now().add(const Duration(days: 30)))
+            .toUtc(),
+        description: description,
+      );
+      await transaction.insert('debts', debt.toMap());
+      if (installationId != null) {
+        await _outbox.recordDebtChange(
+          transaction,
+          installationId: installationId,
+          debtId: debt.id,
+          operation: 'create',
+          payload: debt.toMap(),
+        );
+      }
+      return debt;
+    });
   }
 
   Future<int> getOutstandingForDebt(String debtId) async {
@@ -131,36 +165,48 @@ class PartyAccountRepository {
     required PaymentMethod method,
     DateTime? date,
     String? notes,
-  }) => _database.transaction((transaction) async {
-    final rows = await transaction.query(
-      'debts',
-      where: 'id = ?',
-      whereArgs: [debtId],
-      limit: 1,
-    );
-    if (rows.isEmpty) throw StateError('Debt was not found.');
-    final debt = Debt.fromMap(rows.single);
-    final payments = await transaction.rawQuery(
-      'SELECT COALESCE(SUM(amount_minor), 0) AS paid '
-      'FROM payments WHERE debt_id = ?',
-      [debtId],
-    );
-    final outstanding = debt.amountMinor - requiredInt(payments.single, 'paid');
-    if (amountMinor <= 0 || amountMinor > outstanding) {
-      throw ArgumentError(
-        'Payment must be positive and no greater than the outstanding debt.',
+  }) async {
+    final installationId = await _installationIdentity.getOrCreateSafe();
+    return _database.transaction((transaction) async {
+      final rows = await transaction.query(
+        'debts',
+        where: 'id = ?',
+        whereArgs: [debtId],
+        limit: 1,
       );
-    }
-    final payment = Payment(
-      debtId: debtId,
-      amountMinor: amountMinor,
-      method: method,
-      date: date,
-      notes: notes,
-    );
-    await transaction.insert('payments', payment.toMap());
-    return payment;
-  });
+      if (rows.isEmpty) throw StateError('Debt was not found.');
+      final debt = Debt.fromMap(rows.single);
+      final payments = await transaction.rawQuery(
+        'SELECT COALESCE(SUM(amount_minor), 0) AS paid '
+        'FROM payments WHERE debt_id = ?',
+        [debtId],
+      );
+      final outstanding = debt.amountMinor - requiredInt(payments.single, 'paid');
+      if (amountMinor <= 0 || amountMinor > outstanding) {
+        throw ArgumentError(
+          'Payment must be positive and no greater than the outstanding debt.',
+        );
+      }
+      final payment = Payment(
+        debtId: debtId,
+        amountMinor: amountMinor,
+        method: method,
+        date: date,
+        notes: notes,
+      );
+      await transaction.insert('payments', payment.toMap());
+      if (installationId != null) {
+        await _outbox.recordPaymentChange(
+          transaction,
+          installationId: installationId,
+          paymentId: payment.id,
+          operation: 'create',
+          payload: payment.toMap(),
+        );
+      }
+      return payment;
+    });
+  }
 }
 
 class PartyAccountSummary {

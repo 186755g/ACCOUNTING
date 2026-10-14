@@ -4,7 +4,6 @@ import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 
 import 'models/app_settings.dart';
-import 'models/category.dart';
 import 'models/customer.dart';
 import 'models/debt.dart';
 import 'models/expense.dart';
@@ -34,7 +33,11 @@ class LocalDatabase {
         installationIdentity: installationIdentity,
         outbox: SyncOutboxRepository(_database),
       ),
-      products = ProductRepository(_database),
+      products = ProductRepository(
+        _database,
+        installationIdentity: installationIdentity,
+        outbox: SyncOutboxRepository(_database),
+      ),
       customers = SqliteEntityRepository<Customer>(
         _database,
         table: 'customers',
@@ -100,9 +103,21 @@ class LocalDatabase {
         dateColumn: 'created_at',
       ),
       settings = AppSettingsRepository(_database),
-      sales = SaleRepository(_database),
-      purchases = PurchaseRepository(_database),
-      partyAccounts = PartyAccountRepository(_database),
+      sales = SaleRepository(
+        _database,
+        installationIdentity: installationIdentity,
+        outbox: SyncOutboxRepository(_database),
+      ),
+      purchases = PurchaseRepository(
+        _database,
+        installationIdentity: installationIdentity,
+        outbox: SyncOutboxRepository(_database),
+      ),
+      partyAccounts = PartyAccountRepository(
+        _database,
+        installationIdentity: installationIdentity,
+        outbox: SyncOutboxRepository(_database),
+      ),
       inventory = InventoryRepository(_database);
 
   static const databaseVersion = 8;
@@ -631,6 +646,8 @@ class LocalDatabase {
         created_at INTEGER NOT NULL,
         status TEXT NOT NULL DEFAULT 'pending'
           CHECK (status IN ('pending', 'acknowledged'))
+        -- Local status values describe journal state only and do not imply
+        -- remote delivery or server acknowledgement.
       )
     ''');
     await database.execute('''

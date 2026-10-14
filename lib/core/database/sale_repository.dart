@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 
+import '../services/installation_identity_store.dart';
 import 'models/model_utils.dart';
 import 'models/debt.dart';
 import 'models/payment.dart';
@@ -8,67 +9,104 @@ import 'models/sale_item.dart';
 import 'models/sale_tender.dart';
 import 'inventory_repository.dart';
 import 'sqlite_entity_repository.dart';
+import 'sync_outbox_repository.dart';
 
 class SaleRepository {
-  SaleRepository(Database database)
-    : _database = database,
-      _inventory = InventoryRepository(database),
-      _sales = SqliteEntityRepository<_SaleRow>(
-        database,
-        table: 'sales',
-        fromMap: _SaleRow.fromMap,
-        searchableColumns: const ['id', 'status', 'notes'],
-        filterableColumns: const {'id', 'customer_id', 'user_id', 'status'},
-        dateColumn: 'date_at',
-      );
+  SaleRepository(
+    Database database, {
+    required InstallationIdentityStore installationIdentity,
+    required SyncOutboxRepository outbox,
+  }) : _database = database,
+       _installationIdentity = installationIdentity,
+       _outbox = outbox,
+       _inventory = InventoryRepository(database),
+       _sales = SqliteEntityRepository<_SaleRow>(
+         database,
+         table: 'sales',
+         fromMap: _SaleRow.fromMap,
+         searchableColumns: const ['id', 'status', 'notes'],
+         filterableColumns: const {'id', 'customer_id', 'user_id', 'status'},
+         dateColumn: 'date_at',
+       );
 
   final Database _database;
+  final InstallationIdentityStore _installationIdentity;
+  final SyncOutboxRepository _outbox;
   final InventoryRepository _inventory;
   final SqliteEntityRepository<_SaleRow> _sales;
 
-  Future<void> create(Sale sale) => _database.transaction((transaction) async {
-    await _createInTransaction(sale, transaction);
-  });
+  Future<void> create(Sale sale) async {
+    final installationId = await _installationIdentity.getOrCreateSafe();
+    await _database.transaction((transaction) async {
+      await _createInTransaction(sale, transaction);
+      if (installationId != null) {
+        final payload = <String, Object?>{
+          'sale': sale.toMap(),
+          'items': sale.items.map((item) => item.toMap()).toList(),
+        };
+        await _outbox.recordSaleChange(
+          transaction,
+          installationId: installationId,
+          saleId: sale.id,
+          operation: 'create',
+          payload: payload,
+        );
+      }
+    });
+  }
 
   Future<Sale> checkout(
     Sale sale, {
-    required List<SaleTender> tenders,
-  }) => _database.transaction((transaction) async {
-    if (sale.status != 'completed') {
-      throw ArgumentError('A checkout sale must have completed status.');
-    }
-    if (tenders.any((tender) => tender.amountMinor <= 0)) {
-      throw ArgumentError('Every sale tender must be greater than zero.');
-    }
-    final paidMinor = tenders.fold<int>(
-      0,
-      (total, tender) => total + tender.amountMinor,
-    );
-    if (paidMinor > sale.totalMinor) {
-      throw ArgumentError('Payment total cannot exceed the sale total.');
-    }
-    final unpaidMinor = sale.totalMinor - paidMinor;
-    if (unpaidMinor > 0 && sale.customerId == null) {
-      throw ArgumentError('A customer is required for unpaid sale balance.');
-    }
+      required List<SaleTender> tenders,
+    }) async {
+    final installationId = await _installationIdentity.getOrCreateSafe();
+    return _database.transaction((transaction) async {
+      if (sale.status != 'completed') {
+        throw ArgumentError('A checkout sale must have completed status.');
+      }
+      if (tenders.any((tender) => tender.amountMinor <= 0)) {
+        throw ArgumentError('Every sale tender must be greater than zero.');
+      }
+      final paidMinor = tenders.fold<int>(
+        0,
+        (total, tender) => total + tender.amountMinor,
+      );
+      if (paidMinor > sale.totalMinor) {
+        throw ArgumentError('Payment total cannot exceed the sale total.');
+      }
+      final unpaidMinor = sale.totalMinor - paidMinor;
+      if (unpaidMinor > 0 && sale.customerId == null) {
+        throw ArgumentError('A customer is required for unpaid sale balance.');
+      }
 
-    await _createInTransaction(sale, transaction);
-    for (final tender in tenders) {
-      await transaction.insert(
-        'payments',
-        Payment(
+      await _createInTransaction(sale, transaction);
+      final createdPayments = <Payment>[];
+      for (final tender in tenders) {
+        final payment = Payment(
           saleId: sale.id,
           amountMinor: tender.amountMinor,
           method: tender.method,
           date: sale.date,
-        ).toMap(),
-        conflictAlgorithm: ConflictAlgorithm.abort,
-      );
-    }
-    if (unpaidMinor > 0) {
-      await transaction.insert(
-        'debts',
-        Debt(
+        );
+        await transaction.insert(
+          'payments',
+          payment.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        createdPayments.add(payment);
+        if (installationId != null) {
+          await _outbox.recordPaymentChange(
+            transaction,
+            installationId: installationId,
+            paymentId: payment.id,
+            operation: 'create',
+            payload: payment.toMap(),
+          );
+        }
+      }
+      Debt? createdDebt;
+      if (unpaidMinor > 0) {
+        createdDebt = Debt(
           customerId: sale.customerId,
           saleId: sale.id,
           direction: DebtDirection.receivable,
@@ -77,13 +115,40 @@ class SaleRepository {
           description: 'Unpaid balance for sale ${sale.id}',
           createdAt: sale.date,
           updatedAt: sale.date,
-        ).toMap(),
-        conflictAlgorithm: ConflictAlgorithm.abort,
-      );
-    }
-    return sale;
-  });
-
+        );
+        await transaction.insert(
+          'debts',
+          createdDebt.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        if (installationId != null) {
+          await _outbox.recordDebtChange(
+            transaction,
+            installationId: installationId,
+            debtId: createdDebt.id,
+            operation: 'create',
+            payload: createdDebt.toMap(),
+          );
+        }
+      }
+      if (installationId != null) {
+        final payload = <String, Object?>{
+          'sale': sale.toMap(),
+          'items': sale.items.map((item) => item.toMap()).toList(),
+          'payments': createdPayments.map((payment) => payment.toMap()).toList(),
+          'debt': createdDebt?.toMap(),
+        };
+        await _outbox.recordSaleChange(
+          transaction,
+          installationId: installationId,
+          saleId: sale.id,
+          operation: 'create',
+          payload: payload,
+        );
+      }
+      return sale;
+    });
+  }
   Future<void> _createInTransaction(Sale sale, Transaction transaction) async {
     _validateItems(sale);
     await _sales.create(_SaleRow(sale.toMap()), transaction: transaction);
