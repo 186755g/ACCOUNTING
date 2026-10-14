@@ -15,6 +15,8 @@ class SalesScreen extends StatefulWidget {
 }
 
 class _SalesScreenState extends State<SalesScreen> {
+  static const _pageSize = 20;
+
   final _searchController = TextEditingController();
   List<Sale> _sales = [];
   List<Customer> _customers = [];
@@ -26,6 +28,9 @@ class _SalesScreenState extends State<SalesScreen> {
   DateTime? _from;
   DateTime? _to;
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = false;
+  bool _loadMoreFailed = false;
   String? _error;
   int _loadRequest = 0;
 
@@ -48,7 +53,7 @@ class _SalesScreenState extends State<SalesScreen> {
         filters: _customerId == null ? const {} : {'customer_id': _customerId},
         fromDate: _from,
         toDate: _to,
-        limit: 500,
+        limit: _pageSize + 1,
       );
       final customers = await widget.database.customers.getAll(orderBy: 'name');
       final settings = await widget.database.settings.get();
@@ -67,7 +72,7 @@ class _SalesScreenState extends State<SalesScreen> {
       });
       if (!mounted || request != _loadRequest) return;
       setState(() {
-        _sales = sales;
+        _sales = sales.take(_pageSize).toList(growable: false);
         _customers = customers;
         _customerNames = {
           for (final customer in customers) customer.id: customer.name,
@@ -77,6 +82,9 @@ class _SalesScreenState extends State<SalesScreen> {
             row['sale_id'] as String: (row['paid'] as num).round(),
         };
         _currencyCode = settings?.currencyCode ?? 'EGP';
+        _hasMore = sales.length > _pageSize;
+        _loadingMore = false;
+        _loadMoreFailed = false;
         _loading = false;
         _error = null;
       });
@@ -86,6 +94,37 @@ class _SalesScreenState extends State<SalesScreen> {
       setState(() {
         _loading = false;
         _error = error.toString();
+      });
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    final request = _loadRequest;
+    setState(() {
+      _loadingMore = true;
+      _loadMoreFailed = false;
+    });
+    try {
+      final sales = await widget.database.sales.getAll(
+        filters: _customerId == null ? const {} : {'customer_id': _customerId},
+        fromDate: _from,
+        toDate: _to,
+        limit: _pageSize + 1,
+        offset: _sales.length,
+      );
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _sales = [..._sales, ...sales.take(_pageSize)];
+        _hasMore = sales.length > _pageSize;
+        _loadingMore = false;
+      });
+    } catch (error) {
+      debugPrint('Failed to load more sales: ${error.runtimeType}');
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _loadingMore = false;
+        _loadMoreFailed = true;
       });
     }
   }
@@ -275,8 +314,27 @@ class _SalesScreenState extends State<SalesScreen> {
                           onRefresh: _load,
                           child: ListView.builder(
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
-                            itemCount: visibleSales.length,
+                            itemCount: visibleSales.length + (_hasMore ? 1 : 0),
                             itemBuilder: (context, index) {
+                              if (index == visibleSales.length) {
+                                if (_loadMoreFailed) {
+                                  return Center(
+                                    child: TextButton(
+                                      onPressed: _loadMore,
+                                      child: Text(strings.retry),
+                                    ),
+                                  );
+                                }
+                                return Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Center(
+                                    child: TextButton(
+                                      onPressed: _loadMore,
+                                      child: Text(strings.showMore),
+                                    ),
+                                  ),
+                                );
+                              }
                               final sale = visibleSales[index];
                               final customerName = sale.customerId == null
                                   ? strings.walkInCustomer

@@ -8,6 +8,7 @@ import 'models/customer.dart';
 import 'models/debt.dart';
 import 'models/expense.dart';
 import 'models/model_utils.dart';
+import 'financial_account_repository.dart';
 import 'inventory_repository.dart';
 import 'models/payment.dart';
 import 'models/supplier.dart';
@@ -77,6 +78,7 @@ class LocalDatabase {
         filterableColumns: const {'id', 'user_id', 'category', 'amount_minor'},
         dateColumn: 'date_at',
       ),
+      financialAccounts = FinancialAccountRepository(_database),
       payments = SqliteEntityRepository<Payment>(
         _database,
         table: 'payments',
@@ -120,7 +122,7 @@ class LocalDatabase {
       ),
       inventory = InventoryRepository(_database);
 
-  static const databaseVersion = 8;
+  static const databaseVersion = 9;
   static const databaseName = 'hesabati.db';
 
   final Database _database;
@@ -138,6 +140,7 @@ class LocalDatabase {
   final SqliteEntityRepository<Supplier> suppliers;
   final SqliteEntityRepository<Debt> debts;
   final SqliteEntityRepository<Expense> expenses;
+  final FinancialAccountRepository financialAccounts;
   final SqliteEntityRepository<Payment> payments;
   final SqliteEntityRepository<User> users;
   final AppSettingsRepository settings;
@@ -389,6 +392,9 @@ class LocalDatabase {
     if (oldVersion < 8) {
       await _createSyncOutboxSchema(database);
     }
+    if (oldVersion < 9) {
+      await _createFinancialAccountSchema(database);
+    }
   }
 
   static Future<void> _createSchema(Database database) async {
@@ -553,6 +559,7 @@ class LocalDatabase {
         updated_at INTEGER NOT NULL
       )
     ''');
+    await _createFinancialAccountSchema(database);
     await database.execute('''
       CREATE TABLE payments (
         id TEXT PRIMARY KEY,
@@ -627,6 +634,65 @@ class LocalDatabase {
       await database.execute(statement);
     }
     await _createSyncOutboxSchema(database);
+  }
+
+  static Future<void> _createFinancialAccountSchema(
+    DatabaseExecutor database,
+  ) async {
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS financial_accounts (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL CHECK (
+          type IN ('cash', 'bank', 'card', 'mobileWallet', 'other')
+        ),
+        account_number TEXT,
+        notes TEXT,
+        opening_balance_minor INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS account_movements (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES financial_accounts(id) ON DELETE RESTRICT,
+        direction TEXT NOT NULL CHECK (direction IN ('credit', 'debit')),
+        amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
+        date_at INTEGER NOT NULL,
+        description TEXT,
+        reference TEXT,
+        source_type TEXT,
+        source_id TEXT,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS account_reconciliations (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES financial_accounts(id) ON DELETE RESTRICT,
+        date_at INTEGER NOT NULL,
+        book_balance_minor INTEGER NOT NULL,
+        actual_balance_minor INTEGER NOT NULL,
+        variance_minor INTEGER NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('matched', 'variance')),
+        note TEXT,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+    await database.execute('''
+      CREATE INDEX IF NOT EXISTS idx_financial_accounts_name
+      ON financial_accounts(name COLLATE NOCASE)
+    ''' );
+    await database.execute('''
+      CREATE INDEX IF NOT EXISTS idx_account_movements_account_date
+      ON account_movements(account_id, date_at DESC)
+    ''' );
+    await database.execute('''
+      CREATE INDEX IF NOT EXISTS idx_account_reconciliations_account_date
+      ON account_reconciliations(account_id, date_at DESC)
+    ''' );
   }
 
   static Future<void> _createSyncOutboxSchema(

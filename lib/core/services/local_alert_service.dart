@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/timezone.dart' as tz_types;
 
 import '../database/local_database.dart';
 import '../database/models/model_utils.dart';
@@ -130,38 +132,104 @@ class FlutterLocalNotificationClient implements LocalNotificationClient {
   );
 }
 
+class FlutterLocalNotificationScheduler implements LocalNotificationScheduler {
+  FlutterLocalNotificationScheduler({FlutterLocalNotificationsPlugin? plugin})
+    : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+
+  final FlutterLocalNotificationsPlugin _plugin;
+  bool _initialized = false;
+
+  Future<void> _ensureInitialized() async {
+    if (_initialized) return;
+    tz.initializeTimeZones();
+    await _plugin.initialize(
+      settings: const InitializationSettings(
+        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        iOS: DarwinInitializationSettings(
+          requestAlertPermission: false,
+          requestBadgePermission: false,
+          requestSoundPermission: false,
+        ),
+        macOS: DarwinInitializationSettings(
+          requestAlertPermission: false,
+          requestBadgePermission: false,
+          requestSoundPermission: false,
+        ),
+        linux: LinuxInitializationSettings(defaultActionName: 'Open Hesabati'),
+        windows: WindowsInitializationSettings(
+          appName: 'Hesabati',
+          appUserModelId: 'com.hesabati.business',
+          guid: 'f1591974-5943-4dc8-b462-7bcb4259c137',
+        ),
+      ),
+    );
+    _initialized = true;
+  }
+
+  @override
+  Future<void> schedule({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime at,
+  }) async {
+    await _ensureInitialized();
+    final scheduledAt = tz_types.TZDateTime.from(at, tz_types.local);
+    await _plugin.zonedSchedule(
+      id: id,
+      title: title,
+      body: body,
+      scheduledDate: scheduledAt,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'business_alerts',
+          'Business alerts',
+          channelDescription: 'Scheduled reminders for local business activity.',
+          importance: Importance.defaultImportance,
+          priority: Priority.defaultPriority,
+        ),
+        iOS: DarwinNotificationDetails(),
+        macOS: DarwinNotificationDetails(),
+      ),
+      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      payload: 'reminder:$id',
+    );
+  }
+
+  @override
+  Future<void> cancel(int id) => _plugin.cancel(id: id);
+}
+
 class LocalAlertService implements BusinessAlertService {
   LocalAlertService(
     this._database, {
     LocalNotificationClient? notificationClient,
-    this.scheduler,
+    LocalNotificationScheduler? scheduler,
   }) : _notificationClient =
-           notificationClient ?? FlutterLocalNotificationClient();
+           notificationClient ?? FlutterLocalNotificationClient(),
+       _scheduler = scheduler ?? FlutterLocalNotificationScheduler();
 
   final LocalDatabase _database;
   final LocalNotificationClient _notificationClient;
-  final LocalNotificationScheduler? scheduler;
+  final LocalNotificationScheduler _scheduler;
+
+  Future<void> scheduleReminder({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime at,
+  }) => _scheduler.schedule(id: id, title: title, body: body, at: at);
+
+  Future<void> cancelReminder(int id) => _scheduler.cancel(id);
 
   Future<void> schedule({
     required int id,
     required String title,
     required String body,
     required DateTime at,
-  }) {
-    final schedulerPort = scheduler;
-    if (schedulerPort == null) {
-      throw StateError('No background notification scheduler is configured.');
-    }
-    return schedulerPort.schedule(id: id, title: title, body: body, at: at);
-  }
+  }) => scheduleReminder(id: id, title: title, body: body, at: at);
 
-  Future<void> cancelScheduled(int id) {
-    final schedulerPort = scheduler;
-    if (schedulerPort == null) {
-      throw StateError('No background notification scheduler is configured.');
-    }
-    return schedulerPort.cancel(id);
-  }
+  Future<void> cancelScheduled(int id) => cancelReminder(id);
 
   Future<void> initialize() => _notificationClient.initialize();
 

@@ -383,12 +383,34 @@ class FinancialService {
     String? categoryId,
     String? customerId,
     int? limit,
+    int offset = 0,
     bool leastSelling = false,
+    bool highestProfit = false,
   }) async {
     _validateRange(from, to);
     if (limit != null && limit <= 0) {
       throw ArgumentError.value(limit, 'limit');
     }
+    if (offset < 0) throw ArgumentError.value(offset, 'offset');
+    final params = <Object?>[
+      dateToDatabase(from),
+      dateToDatabase(to),
+      dateToDatabase(from),
+      dateToDatabase(to),
+      dateToDatabase(from),
+      dateToDatabase(to),
+      categoryId,
+      categoryId,
+      customerId,
+      customerId,
+    ];
+    final limitClause = limit == null ? '' : 'LIMIT ? OFFSET ?';
+    if (limit != null) {
+      params.add(limit);
+      params.add(offset);
+    }
+    final ordering = highestProfit ? '(revenue - cost)' : 'quantity';
+    final direction = highestProfit || !leastSelling ? 'DESC' : 'ASC';
     final rows = await _database.transaction(
       (transaction) => transaction.rawQuery(
         '''
@@ -410,21 +432,11 @@ class FinancialService {
         AND (? IS NULL OR p.category_id = ?)
         AND (? IS NULL OR si.customer_id = ?)
       GROUP BY si.product_id, si.product_name
-      ORDER BY quantity ${leastSelling ? 'ASC' : 'DESC'}, revenue DESC
-      ${limit == null ? '' : 'LIMIT $limit'}
+      ORDER BY $ordering $direction, revenue DESC,
+        si.product_name COLLATE NOCASE, si.product_id
+      $limitClause
         ''',
-        [
-          dateToDatabase(from),
-          dateToDatabase(to),
-          dateToDatabase(from),
-          dateToDatabase(to),
-          dateToDatabase(from),
-          dateToDatabase(to),
-          categoryId,
-          categoryId,
-          customerId,
-          customerId,
-        ],
+        params,
       ),
     );
     return rows
@@ -447,9 +459,11 @@ class FinancialService {
     required DateTime from,
     required DateTime to,
     int limit = 20,
+    int offset = 0,
   }) async {
     _validateRange(from, to);
     if (limit <= 0) throw ArgumentError.value(limit, 'limit');
+    if (offset < 0) throw ArgumentError.value(offset, 'offset');
     final rows = await _database.transaction(
       (transaction) => transaction.rawQuery(
         '''
@@ -457,9 +471,10 @@ class FinancialService {
         COALESCE(SUM(s.total_minor), 0) AS total
       FROM customers c LEFT JOIN sales s ON s.customer_id = c.id
         AND s.status = 'completed' AND s.date_at >= ? AND s.date_at < ?
-      GROUP BY c.id ORDER BY total DESC, c.name COLLATE NOCASE LIMIT ?
+      GROUP BY c.id ORDER BY total DESC, c.name COLLATE NOCASE
+      LIMIT ? OFFSET ?
         ''',
-        [dateToDatabase(from), dateToDatabase(to), limit],
+        [dateToDatabase(from), dateToDatabase(to), limit, offset],
       ),
     );
     return rows

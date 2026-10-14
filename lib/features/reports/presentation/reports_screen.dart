@@ -22,6 +22,8 @@ class ReportsScreen extends StatefulWidget {
 }
 
 class _ReportsScreenState extends State<ReportsScreen> {
+  static const _pageSize = 10;
+
   late DateTime _from;
   late DateTime _to;
   FinancialBucket _bucket = FinancialBucket.day;
@@ -40,7 +42,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
   List<CustomerFinancialResult> _customerResults = [];
   AppSettings? _settings;
   bool _loading = true;
+  bool _loadingMoreTopProducts = false;
+  bool _loadingMoreLeastProducts = false;
+  bool _loadingMoreProfitProducts = false;
+  bool _loadingMoreCustomers = false;
+  bool _hasMoreTopProducts = false;
+  bool _hasMoreLeastProducts = false;
+  bool _hasMoreProfitProducts = false;
+  bool _hasMoreCustomerResults = false;
+  bool _loadMoreFailedTopProducts = false;
+  bool _loadMoreFailedLeastProducts = false;
+  bool _loadMoreFailedProfitProducts = false;
+  bool _loadMoreFailedCustomers = false;
   String? _error;
+  int _loadRequest = 0;
 
   @override
   void initState() {
@@ -52,6 +67,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Future<void> _load() async {
+    final request = ++_loadRequest;
     setState(() {
       _loading = true;
       _error = null;
@@ -72,45 +88,199 @@ class _ReportsScreenState extends State<ReportsScreen> {
           to: _to,
           categoryId: _categoryId,
           customerId: _customerId,
-          limit: 10,
+          limit: _pageSize + 1,
         ),
         financial.getProductPerformance(
           from: _from,
           to: _to,
           categoryId: _categoryId,
           customerId: _customerId,
-          limit: 10,
+          limit: _pageSize + 1,
           leastSelling: true,
         ),
-        financial.getCustomerPerformance(from: _from, to: _to),
+        financial.getProductPerformance(
+          from: _from,
+          to: _to,
+          categoryId: _categoryId,
+          customerId: _customerId,
+          limit: _pageSize + 1,
+          highestProfit: true,
+        ),
+        financial.getCustomerPerformance(
+          from: _from,
+          to: _to,
+          limit: _pageSize + 1,
+        ),
         widget.database.customers.getAll(orderBy: 'name'),
         widget.database.suppliers.getAll(orderBy: 'name'),
         widget.database.categories.getAll(orderBy: 'name'),
         widget.database.settings.get(),
       ]);
-      final products = values[2] as List<ProductFinancialResult>;
-      final profitProducts = [...products]
-        ..sort((a, b) => b.profitMinor.compareTo(a.profitMinor));
-      if (!mounted) return;
+      final topProducts = values[2] as List<ProductFinancialResult>;
+      final leastProducts = values[3] as List<ProductFinancialResult>;
+      final profitProducts = values[4] as List<ProductFinancialResult>;
+      final customerResults = values[5] as List<CustomerFinancialResult>;
+      if (!mounted || request != _loadRequest) return;
       setState(() {
         _report = values[0] as FinancialReport;
         _trend = values[1] as List<FinancialPeriod>;
-        _topProducts = products;
-        _leastProducts = values[3] as List<ProductFinancialResult>;
-        _profitProducts = profitProducts;
-        _customerResults = values[4] as List<CustomerFinancialResult>;
-        _customers = values[5] as List<Customer>;
-        _suppliers = values[6] as List<Supplier>;
-        _categories = values[7] as List<Category>;
-        _settings = values[8] as AppSettings?;
+        _topProducts = topProducts.take(_pageSize).toList(growable: false);
+        _leastProducts = leastProducts.take(_pageSize).toList(growable: false);
+        _profitProducts = profitProducts.take(_pageSize).toList(growable: false);
+        _customerResults = customerResults.take(_pageSize).toList(growable: false);
+        _customers = values[6] as List<Customer>;
+        _suppliers = values[7] as List<Supplier>;
+        _categories = values[8] as List<Category>;
+        _settings = values[9] as AppSettings?;
+        _hasMoreTopProducts = topProducts.length > _pageSize;
+        _hasMoreLeastProducts = leastProducts.length > _pageSize;
+        _hasMoreProfitProducts = profitProducts.length > _pageSize;
+        _hasMoreCustomerResults = customerResults.length > _pageSize;
+        _loadingMoreTopProducts = false;
+        _loadingMoreLeastProducts = false;
+        _loadingMoreProfitProducts = false;
+        _loadingMoreCustomers = false;
+        _loadMoreFailedTopProducts = false;
+        _loadMoreFailedLeastProducts = false;
+        _loadMoreFailedProfitProducts = false;
+        _loadMoreFailedCustomers = false;
         _loading = false;
+        _error = null;
       });
     } catch (error) {
       debugPrint('Failed to load analytics and reports: ${error.runtimeType}');
-      if (!mounted) return;
+      if (!mounted || request != _loadRequest) return;
       setState(() {
         _loading = false;
         _error = error.toString();
+      });
+    }
+  }
+
+  Future<void> _loadMoreTopProducts() async {
+    if (_loadingMoreTopProducts || !_hasMoreTopProducts) return;
+    final request = _loadRequest;
+    setState(() {
+      _loadingMoreTopProducts = true;
+      _loadMoreFailedTopProducts = false;
+    });
+    try {
+      final products = await FinancialService(widget.database).getProductPerformance(
+        from: _from,
+        to: _to,
+        categoryId: _categoryId,
+        customerId: _customerId,
+        limit: _pageSize + 1,
+        offset: _topProducts.length,
+      );
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _topProducts = [..._topProducts, ...products.take(_pageSize)];
+        _hasMoreTopProducts = products.length > _pageSize;
+        _loadingMoreTopProducts = false;
+      });
+    } catch (error) {
+      debugPrint('Failed to load more top products: ${error.runtimeType}');
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _loadingMoreTopProducts = false;
+        _loadMoreFailedTopProducts = true;
+      });
+    }
+  }
+
+  Future<void> _loadMoreLeastProducts() async {
+    if (_loadingMoreLeastProducts || !_hasMoreLeastProducts) return;
+    final request = _loadRequest;
+    setState(() {
+      _loadingMoreLeastProducts = true;
+      _loadMoreFailedLeastProducts = false;
+    });
+    try {
+      final products = await FinancialService(widget.database).getProductPerformance(
+        from: _from,
+        to: _to,
+        categoryId: _categoryId,
+        customerId: _customerId,
+        limit: _pageSize + 1,
+        offset: _leastProducts.length,
+        leastSelling: true,
+      );
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _leastProducts = [..._leastProducts, ...products.take(_pageSize)];
+        _hasMoreLeastProducts = products.length > _pageSize;
+        _loadingMoreLeastProducts = false;
+      });
+    } catch (error) {
+      debugPrint('Failed to load more least products: ${error.runtimeType}');
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _loadingMoreLeastProducts = false;
+        _loadMoreFailedLeastProducts = true;
+      });
+    }
+  }
+
+  Future<void> _loadMoreProfitProducts() async {
+    if (_loadingMoreProfitProducts || !_hasMoreProfitProducts) return;
+    final request = _loadRequest;
+    setState(() {
+      _loadingMoreProfitProducts = true;
+      _loadMoreFailedProfitProducts = false;
+    });
+    try {
+      final products = await FinancialService(widget.database).getProductPerformance(
+        from: _from,
+        to: _to,
+        categoryId: _categoryId,
+        customerId: _customerId,
+        limit: _pageSize + 1,
+        offset: _profitProducts.length,
+        highestProfit: true,
+      );
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _profitProducts = [..._profitProducts, ...products.take(_pageSize)];
+        _hasMoreProfitProducts = products.length > _pageSize;
+        _loadingMoreProfitProducts = false;
+      });
+    } catch (error) {
+      debugPrint('Failed to load more profitable products: ${error.runtimeType}');
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _loadingMoreProfitProducts = false;
+        _loadMoreFailedProfitProducts = true;
+      });
+    }
+  }
+
+  Future<void> _loadMoreCustomers() async {
+    if (_loadingMoreCustomers || !_hasMoreCustomerResults) return;
+    final request = _loadRequest;
+    setState(() {
+      _loadingMoreCustomers = true;
+      _loadMoreFailedCustomers = false;
+    });
+    try {
+      final customers = await FinancialService(widget.database).getCustomerPerformance(
+        from: _from,
+        to: _to,
+        limit: _pageSize + 1,
+        offset: _customerResults.length,
+      );
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _customerResults = [..._customerResults, ...customers.take(_pageSize)];
+        _hasMoreCustomerResults = customers.length > _pageSize;
+        _loadingMoreCustomers = false;
+      });
+    } catch (error) {
+      debugPrint('Failed to load more customer analysis: ${error.runtimeType}');
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _loadingMoreCustomers = false;
+        _loadMoreFailedCustomers = true;
       });
     }
   }
@@ -169,7 +339,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ),
       [],
       [strings.productName, strings.quantity, strings.netSales, strings.profit],
-      ..._topProducts.map(
+      ...report.products.map(
         (product) => [
           product.productName,
           product.quantity.toString(),
@@ -222,7 +392,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       ),
       [],
       [strings.productName, strings.quantity, strings.netSales, strings.profit],
-      ..._topProducts.map(
+      ...report.products.map(
         (product) => [
           product.productName,
           SpreadsheetNumber(
@@ -583,13 +753,34 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     ),
                   const SizedBox(height: 16),
                   _sectionTitle(strings.bestSellingProducts),
-                  _productList(_topProducts, strings),
+                  _productList(
+                    _topProducts,
+                    strings,
+                    hasMore: _hasMoreTopProducts,
+                    loadingMore: _loadingMoreTopProducts,
+                    loadMoreFailed: _loadMoreFailedTopProducts,
+                    onLoadMore: _loadMoreTopProducts,
+                  ),
                   const SizedBox(height: 16),
                   _sectionTitle(strings.leastSellingProducts),
-                  _productList(_leastProducts, strings),
+                  _productList(
+                    _leastProducts,
+                    strings,
+                    hasMore: _hasMoreLeastProducts,
+                    loadingMore: _loadingMoreLeastProducts,
+                    loadMoreFailed: _loadMoreFailedLeastProducts,
+                    onLoadMore: _loadMoreLeastProducts,
+                  ),
                   const SizedBox(height: 16),
                   _sectionTitle(strings.highestProfitProducts),
-                  _productList(_profitProducts, strings),
+                  _productList(
+                    _profitProducts,
+                    strings,
+                    hasMore: _hasMoreProfitProducts,
+                    loadingMore: _loadingMoreProfitProducts,
+                    loadMoreFailed: _loadMoreFailedProfitProducts,
+                    onLoadMore: _loadMoreProfitProducts,
+                  ),
                   const SizedBox(height: 16),
                   _sectionTitle(strings.customerAnalysis),
                   ..._customerResults
@@ -603,6 +794,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           trailing: Text(_money(customer.totalMinor)),
                         ),
                       ),
+                  if (_hasMoreCustomerResults)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: _loadMoreButton(
+                        loading: _loadingMoreCustomers,
+                        failed: _loadMoreFailedCustomers,
+                        onPressed: _loadMoreCustomers,
+                        label: strings.showMore,
+                      ),
+                    ),
                   const SizedBox(height: 16),
                   _sectionTitle(strings.inventoryValue),
                   ListTile(
@@ -677,8 +878,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _productList(
     List<ProductFinancialResult> products,
-    AppLocalizations strings,
-  ) {
+    AppLocalizations strings, {
+    required bool hasMore,
+    required bool loadingMore,
+    required bool loadMoreFailed,
+    required VoidCallback onLoadMore,
+  }) {
     final filtered = products
         .where((product) => _matches(product.productName))
         .toList();
@@ -694,8 +899,37 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
             trailing: Text(_money(product.profitMinor)),
           ),
+        if (hasMore)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: _loadMoreButton(
+              label: strings.showMore,
+              loading: loadingMore,
+              failed: loadMoreFailed,
+              onPressed: onLoadMore,
+            ),
+          ),
       ],
     );
+  }
+
+  Widget _loadMoreButton({
+    required String label,
+    required bool loading,
+    required bool failed,
+    required VoidCallback onPressed,
+  }) {
+    if (loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (failed) {
+      return TextButton.icon(
+        onPressed: onPressed,
+        icon: const Icon(Icons.refresh),
+        label: Text(label),
+      );
+    }
+    return TextButton(onPressed: onPressed, child: Text(label));
   }
 
   bool _matches(String value) =>

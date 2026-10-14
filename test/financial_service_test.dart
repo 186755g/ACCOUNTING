@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hesabati/core/database/database.dart';
+import 'package:hesabati/core/services/spreadsheet_export.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {
@@ -382,4 +383,202 @@ void main() {
       expect(report.supplierOutstandingMinor, 70);
     },
   );
+
+  test('paginates product and customer analytics with offset-based queries',
+      () async {
+    final service = FinancialService(database);
+    final products = [
+      Product(
+        id: 'page-p-1',
+        name: 'Page Product 1',
+        costPriceMinor: 10,
+        sellingPriceMinor: 20,
+        stockQuantity: 5,
+      ),
+      Product(
+        id: 'page-p-2',
+        name: 'Page Product 2',
+        costPriceMinor: 15,
+        sellingPriceMinor: 30,
+        stockQuantity: 5,
+      ),
+      Product(
+        id: 'page-p-3',
+        name: 'Page Product 3',
+        costPriceMinor: 20,
+        sellingPriceMinor: 40,
+        stockQuantity: 5,
+      ),
+      Product(
+        id: 'page-p-4',
+        name: 'Page Product 4',
+        costPriceMinor: 25,
+        sellingPriceMinor: 50,
+        stockQuantity: 5,
+      ),
+      Product(
+        id: 'page-p-5',
+        name: 'Page Product 5',
+        costPriceMinor: 30,
+        sellingPriceMinor: 60,
+        stockQuantity: 5,
+      ),
+    ];
+    for (final product in products) {
+      await database.products.create(product);
+    }
+
+    for (var index = 0; index < 5; index++) {
+      final customer = Customer(name: 'Page customer $index');
+      await database.customers.create(customer);
+      await database.sales.checkout(
+        Sale(
+          id: 'page-sale-$index',
+          customerId: customer.id,
+          date: periodStart.add(Duration(days: index)),
+          items: [
+            SaleItem(
+              id: 'page-item-$index',
+              saleId: 'page-sale-$index',
+              productId: products[index].id,
+              productName: products[index].name,
+              quantity: 1,
+              sellingPriceMinor: products[index].sellingPriceMinor,
+              costPriceMinor: products[index].costPriceMinor,
+            ),
+          ],
+        ),
+        tenders: [
+          SaleTender(
+            method: PaymentMethod.cash,
+            amountMinor: products[index].sellingPriceMinor,
+          ),
+        ],
+      );
+    }
+
+    final firstProductPage = await service.getProductPerformance(
+      from: periodStart,
+      to: nextPeriod,
+      limit: 2,
+    );
+    final secondProductPage = await service.getProductPerformance(
+      from: periodStart,
+      to: nextPeriod,
+      limit: 2,
+      offset: 2,
+    );
+    expect(firstProductPage, hasLength(2));
+    expect(secondProductPage, hasLength(2));
+    final firstIds = firstProductPage.map((item) => item.productId).toSet();
+    final secondIds = secondProductPage.map((item) => item.productId).toSet();
+    expect(firstIds.intersection(secondIds), isEmpty);
+
+    final firstCustomerPage = await service.getCustomerPerformance(
+      from: periodStart,
+      to: nextPeriod,
+      limit: 2,
+    );
+    final secondCustomerPage = await service.getCustomerPerformance(
+      from: periodStart,
+      to: nextPeriod,
+      limit: 2,
+      offset: 2,
+    );
+    expect(firstCustomerPage, hasLength(2));
+    expect(secondCustomerPage, hasLength(2));
+    final firstCustomerIds = firstCustomerPage
+        .map((item) => item.customerId)
+        .toSet();
+    final secondCustomerIds = secondCustomerPage
+        .map((item) => item.customerId)
+        .toSet();
+    expect(firstCustomerIds.intersection(secondCustomerIds), isEmpty);
+  });
+
+  test('export rows include the full filtered report dataset', () async {
+    final service = FinancialService(database);
+    final product = Product(
+      id: 'export-product',
+      name: 'Export Product',
+      costPriceMinor: 15,
+      sellingPriceMinor: 30,
+      stockQuantity: 4,
+    );
+    final customer = Customer(name: 'Export Customer');
+    await database.products.create(product);
+    await database.customers.create(customer);
+    await database.sales.checkout(
+      Sale(
+        id: 'export-sale',
+        customerId: customer.id,
+        date: DateTime.utc(2025, 6, 10),
+        items: [
+          SaleItem(
+            id: 'export-item',
+            saleId: 'export-sale',
+            productId: product.id,
+            productName: product.name,
+            quantity: 2,
+            sellingPriceMinor: 30,
+            costPriceMinor: 15,
+          ),
+        ],
+      ),
+      tenders: const [SaleTender(method: PaymentMethod.cash, amountMinor: 60)],
+    );
+
+    final report = await service.getReport(
+      from: periodStart,
+      to: nextPeriod,
+      customerId: customer.id,
+    );
+    final rows = [
+      ['Metric', 'Amount'],
+      ...report.products.map(
+        (item) => [item.productName, item.quantity.toString()],
+      ),
+    ];
+
+    final bytes = spreadsheetXlsxBytes(rows, rightToLeft: false);
+    expect(report.products, hasLength(1));
+    expect(bytes, isNotEmpty);
+  });
+
+  test('tracks account balances and daily reconciliation variance', () async {
+    final cash = FinancialAccount(
+      name: 'Cash drawer',
+      type: FinancialAccountType.cash,
+      openingBalanceMinor: 1000,
+    );
+    await database.financialAccounts.create(cash);
+
+    await database.financialAccounts.recordMovement(
+      accountId: cash.id,
+      direction: AccountMovementDirection.credit,
+      amountMinor: 750,
+      description: 'Sale collection',
+      date: DateTime.utc(2025, 6, 11),
+    );
+    await database.financialAccounts.recordMovement(
+      accountId: cash.id,
+      direction: AccountMovementDirection.debit,
+      amountMinor: 250,
+      description: 'Office expense',
+      date: DateTime.utc(2025, 6, 12),
+    );
+
+    expect(await database.financialAccounts.getBalance(cash.id), 1500);
+
+    final reconciliation = await database.financialAccounts.reconcileDaily(
+      accountId: cash.id,
+      date: DateTime.utc(2025, 6, 12),
+      actualBalanceMinor: 1490,
+      note: 'Cash count mismatch',
+    );
+    expect(reconciliation.bookBalanceMinor, 1500);
+    expect(reconciliation.actualBalanceMinor, 1490);
+    expect(reconciliation.varianceMinor, -10);
+    expect(reconciliation.status, 'variance');
+  });
 }

@@ -24,9 +24,15 @@
   backups. It is not hardware-bound and may be duplicated if the complete
   private app data directory is copied. Outbox rows are part of `.hdb` database
   snapshots, so future delivery must define restored-pending-event handling.
-- Product browsing is paginated; some histories and party/report filter
-  selectors still use bounded or unpaged reads and may need further tuning for
-  very large businesses.
+- Product browsing, party records, purchase/sales histories, and large report
+  analysis lists are now paginated with limit/offset queries. The service and
+  screen layers respect search/date/filter resets and retry states, but the full
+  widget-level large-list flow remains unconfirmed in this Linux test
+  environment.
+- The financial-account ledger is implemented at the database and repository
+  layer, but the dedicated account-management and daily-reconciliation UI is
+  still pending. The core schema supports cash, bank, card, and wallet account
+  types, book balance tracking, and reconciliation variance records.
 - Notification presentation, receipt printing, file sharing, and file picking
   depend on their host-platform integrations and require device-level testing.
 - No clean-device Android install, store listing, production signature, or

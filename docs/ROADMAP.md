@@ -11,7 +11,21 @@
    handling.
 5. Extend pagination to sales, purchases, customer/supplier histories, and
    large report filter lists.
-6. Expand device QA across supported Android versions, RTL/Arabic, accessibility,
+   Status (2026-10-14): sales, purchases, customer/supplier histories, and the
+   large report analysis lists now use limit/offset queries backed by the
+   repository/service layer, with a load-more pattern in the report screen.
+   The widget-level verification for the broader UI flow remains inconclusive in
+   this Linux environment: `flutter test` reaches the tests and stalls during
+   the loading stage without producing a pass/fail signal, so this is not
+   reported as a successful UI validation.
+6. Add the financial accounts ledger and daily reconciliation layer for cash,
+   bank, card, and wallet accounts.
+   Status (2026-10-14): the local SQLite ledger is implemented with separate
+   `financial_accounts`, `account_movements`, and `account_reconciliations`
+   tables, a repository for balance and movement tracking, and a regression test
+   covering opening balance, debit/credit movements, and daily variance checks.
+   The UI for account management and reconciliation screens is not yet added.
+7. Expand device QA across supported Android versions, RTL/Arabic, accessibility,
    large datasets, restore failures, and notification permission states.
-7. Add operational workflows only when requirements and data semantics are
+8. Add operational workflows only when requirements and data semantics are
    specified; do not introduce unsupported business predictions.

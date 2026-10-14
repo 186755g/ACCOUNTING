@@ -294,12 +294,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             switch (index) {
               case 1:
                 widget.onProductsPressed();
+                break;
               case 2:
                 widget.onSalesPressed();
+                break;
               case 3:
                 widget.onCustomersPressed();
+                break;
               case 4:
                 _showMoreMenu();
+                break;
             }
           },
         ),

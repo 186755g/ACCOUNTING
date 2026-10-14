@@ -242,6 +242,59 @@ void main() {
     expect(payments.single.method, PaymentMethod.cash);
   });
 
+  testWidgets('loads more sales in batches for large lists', (tester) async {
+    final customer = Customer(name: 'عميل التصفح');
+    await database.customers.create(customer);
+    for (var index = 0; index < 60; index++) {
+      final product = Product(
+        id: 'page-sale-product-$index',
+        name: 'Product $index',
+        costPriceMinor: 1000,
+        sellingPriceMinor: 2000,
+        stockQuantity: 10,
+      );
+      await database.products.create(product);
+      await database.sales.create(
+        Sale(
+          id: 'sale-page-$index',
+          customerId: customer.id,
+          items: [
+            SaleItem(
+              id: 'sale-item-$index',
+              saleId: 'sale-page-$index',
+              productId: product.id,
+              productName: product.name,
+              quantity: 1,
+              sellingPriceMinor: product.sellingPriceMinor,
+              costPriceMinor: product.costPriceMinor,
+            ),
+          ],
+          notes: 'Sale $index',
+        ),
+      );
+    }
+
+    await tester.pumpWidget(
+      HesabatiApp(
+        database: database,
+        initialSettings: settings,
+        dashboardDataLoader: loadEmptyDashboard,
+        alertService: _TestAlerts(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const ValueKey('open-sales')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('عرض المزيد'), findsOneWidget);
+
+    await tester.tap(find.text('عرض المزيد'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Sale 0'), findsWidgets);
+  });
+
+
   testWidgets('filters recent transactions by search query', (tester) async {
     await tester.pumpWidget(
       HesabatiApp(

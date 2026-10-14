@@ -268,6 +268,7 @@ class AppLocalizations {
   String get outOfStock => isArabic ? 'نفد المخزون' : 'Out of stock';
   String get noSearchResults =>
       isArabic ? 'لا توجد نتائج مطابقة' : 'No matching results';
+  String get showMore => isArabic ? 'عرض المزيد' : 'Show more';
   String get salesSection => isArabic ? 'المبيعات' : 'Sales';
   String get productsSection => isArabic ? 'المنتجات' : 'Products';
   String get customersSection => isArabic ? 'العملاء' : 'Customers';

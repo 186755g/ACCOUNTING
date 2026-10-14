@@ -41,7 +41,7 @@ catalog later changes.
 
 ## Schema migrations
 
-The current schema version is **8** (`LocalDatabase.databaseVersion`).
+The current schema version is **9** (`LocalDatabase.databaseVersion`).
 Increment it for every schema change and add a forward migration in
 `LocalDatabase._upgradeSchema`. Migrations must work from every supported old
 version and preserve data. Fresh schema creation and migration paths must
@@ -63,6 +63,12 @@ sequence, timestamp, and local pending status. A unique constraint protects
 operation IDs within this database; without a server and server-side
 idempotency checks, this is not a guarantee against duplicate processing
 across devices or copied databases.
+
+Version 9 adds the financial account ledger for cash, bank, card, and wallet
+accounts. It includes `financial_accounts`, `account_movements`, and
+`account_reconciliations` tables with opening-balance tracking, movement
+history, and daily-close variance records. The business logic is local-only
+and does not yet include a UI or external reconciliation engine.
 
 This is a local synchronization foundation only, not a complete network-sync
 system. The outbox is for local journaling and future delivery planning; it is

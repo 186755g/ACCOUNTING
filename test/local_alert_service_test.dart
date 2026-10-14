@@ -76,6 +76,25 @@ void main() {
       expect(notifications.messages, hasLength(2));
     },
   );
+
+  test('schedules and cancels reminder notifications through the service',
+      () async {
+    final scheduler = _RecordingScheduler();
+    final alerts = LocalAlertService(database, scheduler: scheduler);
+    final at = DateTime(2026, 8, 1, 9, 30);
+
+    await alerts.scheduleReminder(
+      id: 77,
+      title: 'Reminder',
+      body: 'Check the store',
+      at: at,
+    );
+    expect(scheduler.scheduled, [77]);
+    expect(scheduler.titles, ['Reminder']);
+
+    await alerts.cancelReminder(77);
+    expect(scheduler.canceled, [77]);
+  });
 }
 
 class _RecordingNotifications implements LocalNotificationClient {
@@ -95,4 +114,24 @@ class _RecordingNotifications implements LocalNotificationClient {
   }) async {
     messages.add('$id:$title:$body');
   }
+}
+
+class _RecordingScheduler implements LocalNotificationScheduler {
+  final scheduled = <int>[];
+  final titles = <String>[];
+  final canceled = <int>[];
+
+  @override
+  Future<void> schedule({
+    required int id,
+    required String title,
+    required String body,
+    required DateTime at,
+  }) async {
+    scheduled.add(id);
+    titles.add(title);
+  }
+
+  @override
+  Future<void> cancel(int id) async => canceled.add(id);
 }

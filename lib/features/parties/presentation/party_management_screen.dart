@@ -19,10 +19,15 @@ class PartyManagementScreen extends StatefulWidget {
 }
 
 class _PartyManagementScreenState extends State<PartyManagementScreen> {
+  static const _pageSize = 50;
+
   List<Object> _parties = [];
   final Map<String, PartyAccountSummary> _summaries = {};
   String _currencyCode = 'EGP';
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = false;
+  bool _loadMoreFailed = false;
   String? _error;
   int _loadRequest = 0;
 
@@ -36,10 +41,16 @@ class _PartyManagementScreenState extends State<PartyManagementScreen> {
     final request = ++_loadRequest;
     try {
       final parties = widget.isSupplier
-          ? await widget.database.suppliers.getAll(orderBy: 'name')
-          : await widget.database.customers.getAll(orderBy: 'name');
+          ? await widget.database.suppliers.getAll(
+              orderBy: 'name',
+              limit: _pageSize + 1,
+            )
+          : await widget.database.customers.getAll(
+              orderBy: 'name',
+              limit: _pageSize + 1,
+            );
       final summaries = <String, PartyAccountSummary>{};
-      for (final party in parties) {
+      for (final party in parties.take(_pageSize)) {
         summaries[party.id] = widget.isSupplier
             ? await widget.database.partyAccounts.getSupplierSummary(party.id)
             : await widget.database.partyAccounts.getCustomerSummary(party.id);
@@ -47,11 +58,14 @@ class _PartyManagementScreenState extends State<PartyManagementScreen> {
       final settings = await widget.database.settings.get();
       if (!mounted || request != _loadRequest) return;
       setState(() {
-        _parties = parties;
+        _parties = parties.take(_pageSize).toList(growable: false);
         _summaries
           ..clear()
           ..addAll(summaries);
         _currencyCode = settings?.currencyCode ?? 'EGP';
+        _hasMore = parties.length > _pageSize;
+        _loadingMore = false;
+        _loadMoreFailed = false;
         _loading = false;
         _error = null;
       });
@@ -61,6 +75,50 @@ class _PartyManagementScreenState extends State<PartyManagementScreen> {
       setState(() {
         _loading = false;
         _error = error.toString();
+      });
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    final request = _loadRequest;
+    setState(() {
+      _loadingMore = true;
+      _loadMoreFailed = false;
+    });
+    try {
+      final parties = widget.isSupplier
+          ? await widget.database.suppliers.getAll(
+              orderBy: 'name',
+              limit: _pageSize + 1,
+              offset: _parties.length,
+            )
+          : await widget.database.customers.getAll(
+              orderBy: 'name',
+              limit: _pageSize + 1,
+              offset: _parties.length,
+            );
+      if (!mounted || request != _loadRequest) return;
+      final summaries = <String, PartyAccountSummary>{};
+      for (final party in parties.take(_pageSize)) {
+        summaries[party.id] = widget.isSupplier
+            ? await widget.database.partyAccounts.getSupplierSummary(party.id)
+            : await widget.database.partyAccounts.getCustomerSummary(party.id);
+      }
+      setState(() {
+        _parties = [..._parties, ...parties.take(_pageSize)];
+        _summaries
+          ..clear()
+          ..addAll(summaries);
+        _hasMore = parties.length > _pageSize;
+        _loadingMore = false;
+      });
+    } catch (error) {
+      debugPrint('Failed to load more party accounts: ${error.runtimeType}');
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _loadingMore = false;
+        _loadMoreFailed = true;
       });
     }
   }
@@ -631,8 +689,27 @@ class _PartyManagementScreenState extends State<PartyManagementScreen> {
               onRefresh: _load,
               child: ListView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-                itemCount: _parties.length,
+                itemCount: _parties.length + (_hasMore ? 1 : 0),
                 itemBuilder: (context, index) {
+                  if (index == _parties.length) {
+                    if (_loadMoreFailed) {
+                      return Center(
+                        child: TextButton(
+                          onPressed: _loadMore,
+                          child: Text(strings.retry),
+                        ),
+                      );
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Center(
+                        child: TextButton(
+                          onPressed: _loadMore,
+                          child: Text(strings.showMore),
+                        ),
+                      ),
+                    );
+                  }
                   final party = _parties[index];
                   final id = party is Customer
                       ? party.id
@@ -688,6 +765,8 @@ class PurchaseManagementScreen extends StatefulWidget {
 }
 
 class _PurchaseManagementScreenState extends State<PurchaseManagementScreen> {
+  static const _pageSize = 20;
+
   final _searchController = TextEditingController();
   List<Purchase> _purchases = [];
   List<Supplier> _suppliers = [];
@@ -699,6 +778,9 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen> {
   DateTime? _from;
   DateTime? _to;
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = false;
+  bool _loadMoreFailed = false;
   String? _error;
   int _loadRequest = 0;
 
@@ -721,7 +803,7 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen> {
         filters: _supplierId == null ? const {} : {'supplier_id': _supplierId},
         fromDate: _from,
         toDate: _to,
-        limit: 500,
+        limit: _pageSize + 1,
       );
       final suppliers = await widget.database.suppliers.getAll(orderBy: 'name');
       final settings = await widget.database.settings.get();
@@ -741,7 +823,7 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen> {
       });
       if (!mounted || request != _loadRequest) return;
       setState(() {
-        _purchases = purchases;
+        _purchases = purchases.take(_pageSize).toList(growable: false);
         _suppliers = suppliers;
         _supplierNames = {
           for (final supplier in suppliers) supplier.id: supplier.name,
@@ -751,6 +833,9 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen> {
             row['purchase_id'] as String: (row['paid'] as num).round(),
         };
         _currencyCode = settings?.currencyCode ?? 'EGP';
+        _hasMore = purchases.length > _pageSize;
+        _loadingMore = false;
+        _loadMoreFailed = false;
         _loading = false;
         _error = null;
       });
@@ -760,6 +845,37 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen> {
       setState(() {
         _loading = false;
         _error = error.toString();
+      });
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    final request = _loadRequest;
+    setState(() {
+      _loadingMore = true;
+      _loadMoreFailed = false;
+    });
+    try {
+      final purchases = await widget.database.purchases.getAll(
+        filters: _supplierId == null ? const {} : {'supplier_id': _supplierId},
+        fromDate: _from,
+        toDate: _to,
+        limit: _pageSize + 1,
+        offset: _purchases.length,
+      );
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _purchases = [..._purchases, ...purchases.take(_pageSize)];
+        _hasMore = purchases.length > _pageSize;
+        _loadingMore = false;
+      });
+    } catch (error) {
+      debugPrint('Failed to load more purchases: ${error.runtimeType}');
+      if (!mounted || request != _loadRequest) return;
+      setState(() {
+        _loadingMore = false;
+        _loadMoreFailed = true;
       });
     }
   }
@@ -930,8 +1046,27 @@ class _PurchaseManagementScreenState extends State<PurchaseManagementScreen> {
                           onRefresh: _load,
                           child: ListView.builder(
                             padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
-                            itemCount: visiblePurchases.length,
+                            itemCount: visiblePurchases.length + (_hasMore ? 1 : 0),
                             itemBuilder: (context, index) {
+                              if (index == visiblePurchases.length) {
+                                if (_loadMoreFailed) {
+                                  return Center(
+                                    child: TextButton(
+                                      onPressed: _loadMore,
+                                      child: Text(strings.retry),
+                                    ),
+                                  );
+                                }
+                                return Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Center(
+                                    child: TextButton(
+                                      onPressed: _loadMore,
+                                      child: Text(strings.showMore),
+                                    ),
+                                  ),
+                                );
+                              }
                               final purchase = visiblePurchases[index];
                               return Card(
                                 child: ListTile(

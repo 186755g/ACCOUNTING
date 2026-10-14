@@ -45,10 +45,11 @@ class InstallationIdentityStore {
 
     try {
       return await getOrCreate();
-    } on Object catch (error, stackTrace) {
+    } on Object catch (error) {
+      final summary = error is Error ? error.runtimeType.toString() : '$error';
       stderr.writeln(
         'Installation identity unavailable; continuing in local-only mode. '
-        '$error\n$stackTrace',
+        '$summary',
       );
       return null;
     }
