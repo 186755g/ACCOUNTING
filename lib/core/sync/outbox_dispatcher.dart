@@ -22,18 +22,18 @@ class SyncOutboxEvent {
     final payloadJson = (map['payload_json'] as String?) ?? '{}';
 
     return SyncOutboxEvent(
-      operationId: (map['operation_id'] as Object?)?.toString() ?? '',
-      installationId: (map['installation_id'] as Object?)?.toString() ?? '',
-      entityType: (map['entity_type'] as Object?)?.toString() ?? '',
-      entityId: (map['entity_id'] as Object?)?.toString() ?? '',
-      operation: (map['operation'] as Object?)?.toString() ?? '',
+      operationId: (map['operation_id'])?.toString() ?? '',
+      installationId: (map['installation_id'])?.toString() ?? '',
+      entityType: (map['entity_type'])?.toString() ?? '',
+      entityId: (map['entity_id'])?.toString() ?? '',
+      operation: (map['operation'])?.toString() ?? '',
       payload: _decodePayload(payloadJson),
       createdAt: DateTime.fromMillisecondsSinceEpoch(
         (map['created_at'] is num)
             ? (map['created_at'] as num).toInt()
             : DateTime.now().millisecondsSinceEpoch,
       ),
-      status: (map['status'] as Object?)?.toString() ?? 'pending',
+      status: (map['status'])?.toString() ?? 'pending',
     );
   }
 
@@ -81,8 +81,24 @@ class OutboxDispatcher {
 
   final Database _database;
   final SyncTransport _transport;
+  Future<int>? _activeDispatch;
 
-  Future<int> dispatchPending() async {
+  Future<int> dispatchPending() {
+    final active = _activeDispatch;
+    if (active != null) {
+      return active.then((_) => 0);
+    }
+
+    final dispatch = _dispatchPendingOnce();
+    _activeDispatch = dispatch;
+    return dispatch.whenComplete(() {
+      if (identical(_activeDispatch, dispatch)) {
+        _activeDispatch = null;
+      }
+    });
+  }
+
+  Future<int> _dispatchPendingOnce() async {
     final rows = await _database.query(
       'sync_outbox',
       where: 'status = ?',
@@ -94,7 +110,14 @@ class OutboxDispatcher {
 
     for (final row in rows) {
       final event = SyncOutboxEvent.fromMap(row);
-      final wasSent = await _transport.send(event);
+
+      bool wasSent;
+      try {
+        wasSent = await _transport.send(event);
+      } on Object {
+        // Keep a failed event pending so it can be retried later.
+        continue;
+      }
 
       if (!wasSent) {
         continue;

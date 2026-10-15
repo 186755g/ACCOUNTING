@@ -5,7 +5,126 @@ import 'models/financial_account.dart';
 import 'models/model_utils.dart';
 import 'models/payment.dart';
 
+String _resolveStableOperationId(String? operationId) {
+  final candidate = (operationId ?? newModelId()).trim();
+  if (candidate.isEmpty) {
+    throw ArgumentError.value(operationId, 'operationId');
+  }
+  return candidate;
+}
+
+bool _matchesFinancialMovementPayload(
+  Map<String, Object?> existing,
+  Map<String, Object?> candidate,
+) =>
+    movementPayloadsMatch(existing, candidate);
+
 class FinancialAccountRepository {
+  Future<void> _markOperationPending(
+    Transaction transaction, {
+    required String operationId,
+    required String operationType,
+  }) async {
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+    try {
+      await transaction.insert(
+        'financial_operation_registry',
+        {
+          'operation_id': operationId,
+          'operation_type': operationType.trim(),
+          'status': 'pending',
+          'created_at': now,
+          'updated_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.abort,
+      );
+    } on DatabaseException {
+      final existing = await transaction.query(
+        'financial_operation_registry',
+        where: 'operation_id = ?',
+        whereArgs: [operationId],
+        limit: 1,
+      );
+      if (existing.isEmpty) {
+        rethrow;
+      }
+    }
+  }
+
+  Future<void> _markOperationCompleted(
+    Transaction transaction,
+    String operationId,
+  ) async {
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+    await transaction.update(
+      'financial_operation_registry',
+      {
+        'status': 'completed',
+        'updated_at': now,
+      },
+      where: 'operation_id = ?',
+      whereArgs: [operationId],
+    );
+  }
+
+  Future<String> reserveFinancialOperation({
+    required String operationType,
+    String? operationId,
+    Transaction? transaction,
+  }) async {
+    final db = transaction ?? _database;
+    final normalizedType = operationType.trim();
+    if (normalizedType.isEmpty) {
+      throw ArgumentError.value(operationType, 'operationType');
+    }
+
+    final stableOperationId = _resolveStableOperationId(operationId);
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+
+    try {
+      await db.insert(
+        'financial_operation_registry',
+        {
+          'operation_id': stableOperationId,
+          'operation_type': normalizedType,
+          'status': 'pending',
+          'created_at': now,
+          'updated_at': now,
+        },
+        conflictAlgorithm: ConflictAlgorithm.abort,
+      );
+      return stableOperationId;
+    } on DatabaseException {
+      final existing = await db.query(
+        'financial_operation_registry',
+        where: 'operation_id = ?',
+        whereArgs: [stableOperationId],
+        limit: 1,
+      );
+      if (existing.isNotEmpty) {
+        return stableOperationId;
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> completeFinancialOperation({
+    required String operationId,
+    Transaction? transaction,
+  }) async {
+    final db = transaction ?? _database;
+    final now = DateTime.now().toUtc().millisecondsSinceEpoch;
+    await db.update(
+      'financial_operation_registry',
+      {
+        'status': 'completed',
+        'updated_at': now,
+      },
+      where: 'operation_id = ?',
+      whereArgs: [operationId],
+    );
+  }
+
   FinancialAccountRepository(this._database);
 
   final Database _database;
@@ -145,18 +264,8 @@ class FinancialAccountRepository {
       return null;
     }
 
-    final duplicates = await db.query(
-      'account_movements',
-      where: 'source_type = ? AND source_id = ?',
-      whereArgs: ['payment', payment.id],
-      limit: 1,
-    );
-    if (duplicates.isNotEmpty) {
-      return AccountMovement.fromMap(duplicates.single);
-    }
-
     final direction = await _paymentMovementDirection(db, payment);
-    final movement = AccountMovement(
+    final candidate = AccountMovement(
       accountId: accountId,
       direction: direction,
       amountMinor: payment.amountMinor,
@@ -166,8 +275,29 @@ class FinancialAccountRepository {
       sourceType: 'payment',
       sourceId: payment.id,
     );
-    await db.insert('account_movements', movement.toMap());
-    return movement;
+
+    final duplicates = await db.query(
+      'account_movements',
+      where: 'source_type = ? AND source_id = ?',
+      whereArgs: ['payment', payment.id],
+      limit: 1,
+    );
+    if (duplicates.isNotEmpty) {
+      final existing = AccountMovement.fromMap(duplicates.single);
+      if (_matchesFinancialMovementPayload(existing.toMap(), candidate.toMap())) {
+        return existing;
+      }
+      throw MovementIdentityConflictException(
+        kind: 'financial movement',
+        sourceType: 'payment',
+        sourceId: payment.id,
+        existingSummary: '${existing.accountId}:${existing.direction.name}:${existing.amountMinor}',
+        requestSummary: '${candidate.accountId}:${candidate.direction.name}:${candidate.amountMinor}',
+      );
+    }
+
+    await db.insert('account_movements', candidate.toMap());
+    return candidate;
   }
 
   Future<AccountMovement> recordMovement({
@@ -181,55 +311,83 @@ class FinancialAccountRepository {
     String? sourceId,
     Transaction? transaction,
   }) async {
-    final db = transaction ?? _database;
-    final account = await _requireAccount(db, accountId);
-    if (!account.isActive) {
-      throw StateError('Financial account is inactive and cannot receive movements.');
-    }
-    if (amountMinor <= 0) {
-      throw ArgumentError.value(amountMinor, 'amountMinor');
-    }
+    final runInTransaction = (Transaction db) async {
+      final account = await _requireAccount(db, accountId);
+      if (!account.isActive) {
+        throw StateError('Financial account is inactive and cannot receive movements.');
+      }
+      if (amountMinor <= 0) {
+        throw ArgumentError.value(amountMinor, 'amountMinor');
+      }
 
-    final normalizedReference = reference?.trim();
-    final normalizedSourceType = sourceType?.trim();
-    final normalizedSourceId = sourceId?.trim();
-    if ((normalizedReference != null && normalizedReference.isNotEmpty) ||
-        (normalizedSourceType != null && normalizedSourceType.isNotEmpty)) {
-      final duplicateWhere = <String>[];
-      final duplicateArgs = <Object?>[];
-      if (normalizedReference != null && normalizedReference.isNotEmpty) {
-        duplicateWhere.add('reference = ?');
-        duplicateArgs.add(normalizedReference);
+      final normalizedReference = reference?.trim();
+      final normalizedSourceType = sourceType?.trim();
+      final normalizedSourceId = sourceId?.trim();
+      if (normalizedSourceType != null &&
+          normalizedSourceType.isNotEmpty &&
+          normalizedSourceId != null &&
+          normalizedSourceId.isNotEmpty) {
+        final duplicates = await db.query(
+          'account_movements',
+          where: 'source_type = ? AND source_id = ?',
+          whereArgs: [normalizedSourceType, normalizedSourceId],
+          limit: 1,
+        );
+        if (duplicates.isNotEmpty) {
+          final existing = AccountMovement.fromMap(duplicates.single);
+          final candidate = AccountMovement(
+            accountId: accountId,
+            direction: direction,
+            amountMinor: amountMinor,
+            date: date,
+            description: description,
+            reference: normalizedReference,
+            sourceType: normalizedSourceType,
+            sourceId: normalizedSourceId,
+          );
+          if (_matchesFinancialMovementPayload(existing.toMap(), candidate.toMap())) {
+            return existing;
+          }
+          throw MovementIdentityConflictException(
+            kind: 'financial movement',
+            sourceType: normalizedSourceType,
+            sourceId: normalizedSourceId,
+            existingSummary: '${existing.accountId}:${existing.direction.name}:${existing.amountMinor}',
+            requestSummary: '${candidate.accountId}:${candidate.direction.name}:${candidate.amountMinor}',
+          );
+        }
+        await _markOperationPending(
+          db,
+          operationId: normalizedSourceId,
+          operationType: normalizedSourceType,
+        );
       }
-      if (normalizedSourceType != null && normalizedSourceType.isNotEmpty) {
-        duplicateWhere.add('source_type = ? AND source_id = ?');
-        duplicateArgs
-          ..add(normalizedSourceType)
-          ..add(normalizedSourceId ?? normalizedReference ?? accountId);
-      }
-      final duplicates = await db.query(
-        'account_movements',
-        where: duplicateWhere.join(' OR '),
-        whereArgs: duplicateArgs,
-        limit: 1,
+
+      final movement = AccountMovement(
+        accountId: accountId,
+        direction: direction,
+        amountMinor: amountMinor,
+        date: date,
+        description: description,
+        reference: normalizedReference,
+        sourceType: normalizedSourceType,
+        sourceId: normalizedSourceId,
       );
-      if (duplicates.isNotEmpty) {
-        throw StateError('A duplicate financial movement already exists.');
-      }
-    }
+      await db.insert('account_movements', movement.toMap());
 
-    final movement = AccountMovement(
-      accountId: accountId,
-      direction: direction,
-      amountMinor: amountMinor,
-      date: date,
-      description: description,
-      reference: normalizedReference,
-      sourceType: normalizedSourceType,
-      sourceId: normalizedSourceId ?? normalizedReference ?? sourceType,
-    );
-    await db.insert('account_movements', movement.toMap());
-    return movement;
+      if (normalizedSourceType != null &&
+          normalizedSourceType.isNotEmpty &&
+          normalizedSourceId != null &&
+          normalizedSourceId.isNotEmpty) {
+        await _markOperationCompleted(db, normalizedSourceId);
+      }
+      return movement;
+    };
+
+    if (transaction != null) {
+      return runInTransaction(transaction);
+    }
+    return _database.transaction(runInTransaction);
   }
 
   Future<AccountMovement> recordDeposit({
@@ -239,8 +397,10 @@ class FinancialAccountRepository {
     String? description,
     String? reference,
     String? sourceId,
+    String? operationId,
   }) async {
     final normalizedReference = reference?.trim();
+    final stableOperationId = _resolveStableOperationId(operationId);
     return recordMovement(
       accountId: accountId,
       direction: AccountMovementDirection.credit,
@@ -249,7 +409,7 @@ class FinancialAccountRepository {
       description: description ?? 'Deposit',
       reference: normalizedReference,
       sourceType: 'account_deposit',
-      sourceId: sourceId ?? normalizedReference ?? 'deposit-${DateTime.now().toUtc().microsecondsSinceEpoch}',
+      sourceId: sourceId ?? stableOperationId,
     );
   }
 
@@ -260,8 +420,10 @@ class FinancialAccountRepository {
     String? description,
     String? reference,
     String? sourceId,
+    String? operationId,
   }) async {
     final normalizedReference = reference?.trim();
+    final stableOperationId = _resolveStableOperationId(operationId);
     return recordMovement(
       accountId: accountId,
       direction: AccountMovementDirection.debit,
@@ -270,7 +432,7 @@ class FinancialAccountRepository {
       description: description ?? 'Withdrawal',
       reference: normalizedReference,
       sourceType: 'account_withdrawal',
-      sourceId: sourceId ?? normalizedReference ?? 'withdrawal-${DateTime.now().toUtc().microsecondsSinceEpoch}',
+      sourceId: sourceId ?? stableOperationId,
     );
   }
 
@@ -281,8 +443,10 @@ class FinancialAccountRepository {
     String? description,
     String? reference,
     String? sourceId,
+    String? operationId,
   }) async {
     final normalizedReference = reference?.trim();
+    final stableOperationId = _resolveStableOperationId(operationId);
     return recordMovement(
       accountId: accountId,
       direction: AccountMovementDirection.debit,
@@ -291,7 +455,7 @@ class FinancialAccountRepository {
       description: description ?? 'Commission',
       reference: normalizedReference,
       sourceType: 'account_commission',
-      sourceId: sourceId ?? normalizedReference ?? 'commission-${DateTime.now().toUtc().microsecondsSinceEpoch}',
+      sourceId: sourceId ?? stableOperationId,
     );
   }
 
@@ -302,6 +466,10 @@ class FinancialAccountRepository {
     DateTime? date,
     String? description,
     String? reference,
+    String? operationId,
+    String? commissionOperationId,
+    int? commissionMinor,
+    String? commissionDescription,
   }) async {
     if (fromAccountId == toAccountId) {
       throw ArgumentError('A transfer must use two different accounts.');
@@ -309,11 +477,18 @@ class FinancialAccountRepository {
     if (amountMinor <= 0) {
       throw ArgumentError.value(amountMinor, 'amountMinor');
     }
+    if (commissionMinor != null && commissionMinor <= 0) {
+      throw ArgumentError.value(commissionMinor, 'commissionMinor');
+    }
 
     final transferDate = (date ?? DateTime.now()).toUtc();
-    final transferReference = (reference ?? 'transfer-${DateTime.now().toUtc().microsecondsSinceEpoch}').trim();
-    if (transferReference.isEmpty) {
-      throw ArgumentError.value(reference, 'reference');
+    final transferOperationId = _resolveStableOperationId(operationId);
+    final transferReference = reference?.trim();
+    final resolvedCommissionOperationId = (commissionMinor != null && commissionMinor > 0)
+        ? (commissionOperationId ?? '$transferOperationId:commission')
+        : null;
+    if (resolvedCommissionOperationId != null && resolvedCommissionOperationId.trim().isEmpty) {
+      throw ArgumentError.value(commissionOperationId, 'commissionOperationId');
     }
 
     return _database.transaction((transaction) async {
@@ -323,14 +498,113 @@ class FinancialAccountRepository {
         throw StateError('A transfer cannot use an inactive account.');
       }
 
-      final duplicateRooms = await transaction.query(
-        'account_movements',
-        where: 'reference = ? AND source_type = ?',
-        whereArgs: [transferReference, 'account_transfer'],
-        limit: 1,
+      await _markOperationPending(
+        transaction,
+        operationId: transferOperationId,
+        operationType: 'account_transfer',
       );
-      if (duplicateRooms.isNotEmpty) {
-        throw StateError('A duplicate transfer already exists.');
+      if (resolvedCommissionOperationId != null) {
+        await _markOperationPending(
+          transaction,
+          operationId: resolvedCommissionOperationId,
+          operationType: 'account_commission',
+        );
+      }
+
+      final transferExists = await transaction.query(
+        'account_movements',
+        where: 'source_type = ? AND source_id = ?',
+        whereArgs: ['account_transfer', transferOperationId],
+        limit: 2,
+      );
+      if (transferExists.isNotEmpty) {
+        final expectedTransferRows = [
+          AccountMovement(
+            accountId: fromAccountId,
+            direction: AccountMovementDirection.debit,
+            amountMinor: amountMinor,
+            date: transferDate,
+            description: description ?? 'Internal transfer',
+            reference: transferReference,
+            sourceType: 'account_transfer',
+            sourceId: transferOperationId,
+          ),
+          AccountMovement(
+            accountId: toAccountId,
+            direction: AccountMovementDirection.credit,
+            amountMinor: amountMinor,
+            date: transferDate,
+            description: description ?? 'Internal transfer',
+            reference: transferReference,
+            sourceType: 'account_transfer',
+            sourceId: transferOperationId,
+          ),
+        ];
+        final existingTransferRows = transferExists;
+        final equivalent = expectedTransferRows.every(
+          (expected) => existingTransferRows.any(
+            (row) => _matchesFinancialMovementPayload(
+              AccountMovement.fromMap(row).toMap(),
+              expected.toMap(),
+            ),
+          ),
+        );
+        if (equivalent) {
+          return AccountTransfer(
+            sourceAccountId: fromAccountId,
+            destinationAccountId: toAccountId,
+            amountMinor: amountMinor,
+            date: transferDate,
+            description: description ?? 'Internal transfer',
+            reference: transferReference,
+          );
+        }
+        throw MovementIdentityConflictException(
+          kind: 'financial transfer',
+          sourceType: 'account_transfer',
+          sourceId: transferOperationId,
+          existingSummary: 'existing account_transfer rows differ from expected payload',
+          requestSummary: '$fromAccountId->$toAccountId:$amountMinor',
+        );
+      }
+
+      if (resolvedCommissionOperationId != null) {
+        final commissionExists = await transaction.query(
+          'account_movements',
+          where: 'source_type = ? AND source_id = ?',
+          whereArgs: ['account_commission', resolvedCommissionOperationId],
+          limit: 1,
+        );
+        if (commissionExists.isNotEmpty) {
+          final existing = AccountMovement.fromMap(commissionExists.single);
+          final candidate = AccountMovement(
+            accountId: fromAccountId,
+            direction: AccountMovementDirection.debit,
+            amountMinor: commissionMinor!,
+            date: transferDate,
+            description: commissionDescription ?? 'Transfer commission',
+            reference: transferReference,
+            sourceType: 'account_commission',
+            sourceId: resolvedCommissionOperationId,
+          );
+          if (_matchesFinancialMovementPayload(existing.toMap(), candidate.toMap())) {
+            return AccountTransfer(
+              sourceAccountId: fromAccountId,
+              destinationAccountId: toAccountId,
+              amountMinor: amountMinor,
+              date: transferDate,
+              description: description ?? 'Internal transfer',
+              reference: transferReference,
+            );
+          }
+          throw MovementIdentityConflictException(
+            kind: 'financial commission',
+            sourceType: 'account_commission',
+            sourceId: resolvedCommissionOperationId,
+            existingSummary: '${existing.accountId}:${existing.direction.name}:${existing.amountMinor}',
+            requestSummary: '${candidate.accountId}:${candidate.direction.name}:${candidate.amountMinor}',
+          );
+        }
       }
 
       final sourceMovement = AccountMovement(
@@ -341,7 +615,7 @@ class FinancialAccountRepository {
         description: description ?? 'Internal transfer',
         reference: transferReference,
         sourceType: 'account_transfer',
-        sourceId: transferReference,
+        sourceId: transferOperationId,
       );
       final destinationMovement = AccountMovement(
         accountId: toAccountId,
@@ -351,11 +625,30 @@ class FinancialAccountRepository {
         description: description ?? 'Internal transfer',
         reference: transferReference,
         sourceType: 'account_transfer',
-        sourceId: transferReference,
+        sourceId: transferOperationId,
       );
 
       await transaction.insert('account_movements', sourceMovement.toMap());
       await transaction.insert('account_movements', destinationMovement.toMap());
+
+      if (resolvedCommissionOperationId != null && commissionMinor != null && commissionMinor > 0) {
+        final commissionMovement = AccountMovement(
+          accountId: fromAccountId,
+          direction: AccountMovementDirection.debit,
+          amountMinor: commissionMinor,
+          date: transferDate,
+          description: commissionDescription ?? 'Transfer commission',
+          reference: transferReference,
+          sourceType: 'account_commission',
+          sourceId: resolvedCommissionOperationId,
+        );
+        await transaction.insert('account_movements', commissionMovement.toMap());
+      }
+
+      await _markOperationCompleted(transaction, transferOperationId);
+      if (resolvedCommissionOperationId != null) {
+        await _markOperationCompleted(transaction, resolvedCommissionOperationId);
+      }
 
       return AccountTransfer(
         sourceAccountId: fromAccountId,

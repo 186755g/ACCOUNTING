@@ -126,7 +126,7 @@ class LocalDatabase {
       ),
       inventory = InventoryRepository(_database);
 
-  static const databaseVersion = 10;
+  static const databaseVersion = 11;
   static const databaseName = 'hesabati.db';
 
   final Database _database;
@@ -237,6 +237,21 @@ class LocalDatabase {
     int oldVersion,
     int newVersion,
   ) async {
+    if (oldVersion < 11) {
+      await database.execute('''
+        CREATE TABLE IF NOT EXISTS financial_operation_registry (
+          operation_id TEXT PRIMARY KEY,
+          operation_type TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('pending', 'completed')),
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        )
+      ''');
+      await database.execute('''
+        CREATE INDEX IF NOT EXISTS idx_financial_operation_registry_status
+        ON financial_operation_registry(status, updated_at DESC)
+      ''');
+    }
     if (oldVersion < 2) {
       await database.execute(
         "ALTER TABLE app_settings ADD COLUMN owner_name TEXT NOT NULL DEFAULT ''",
@@ -693,6 +708,15 @@ class LocalDatabase {
       )
     ''');
     await database.execute('''
+      CREATE TABLE IF NOT EXISTS financial_operation_registry (
+        operation_id TEXT PRIMARY KEY,
+        operation_type TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'completed')),
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''' );
+    await database.execute('''
       CREATE TABLE IF NOT EXISTS account_reconciliations (
         id TEXT PRIMARY KEY,
         account_id TEXT NOT NULL REFERENCES financial_accounts(id) ON DELETE RESTRICT,
@@ -708,6 +732,10 @@ class LocalDatabase {
     await database.execute('''
       CREATE INDEX IF NOT EXISTS idx_financial_accounts_name
       ON financial_accounts(name COLLATE NOCASE)
+    ''' );
+    await database.execute('''
+      CREATE INDEX IF NOT EXISTS idx_financial_operation_registry_status
+      ON financial_operation_registry(status, updated_at DESC)
     ''' );
     await database.execute('''
       CREATE INDEX IF NOT EXISTS idx_account_movements_account_date

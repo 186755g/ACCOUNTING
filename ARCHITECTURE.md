@@ -44,8 +44,83 @@ refactoring options as workflows expand.
 
 ## State management
 
-Implemented screens use local Flutter state. No provider framework or online
-authentication is required for basic offline usage.
+Implemented screens use local Flutter state. Basic local offline workflows do
+not require server authentication; however, the future online architecture uses
+centralized server-side authentication and explicit store-scoped access.
+
+## Authentication and multi-store access model (future online phase)
+
+The next online phase introduces a centralized server that authenticates users,
+tracks device registrations, and binds each device to the stores the user is
+allowed to access. The local installation ID remains a device-local identifier
+only. It is not used as a proof of user identity, device authorization, or
+store ownership.
+
+The architecture separates three distinct layers:
+
+1. User authentication session
+   - Represents the authenticated user on the server.
+   - Includes user_id, session_id, access token, refresh token, expiry, and
+     revocation status.
+   - Validates the user before any protected API request.
+
+2. Device registration and lifecycle
+   - Represents the physical app instance or device owned by a user.
+   - Includes device_id, user_id, platform, device name, registration status,
+     and active/revoked state.
+   - Reenabled access requires an explicit rebind flow; revocation is never
+     automatically reversed by a normal login or by a stale refresh token.
+
+3. Store-scoped access context
+   - Represents the permission of a registered device to interact with one store.
+   - Includes device_id, store_id, user_id, access status, active session
+     binding, and store-specific sync state such as cursor and last sync
+     checkpoint.
+   - Each store has its own access context, sync state, and pending data flow.
+   - Users may own multiple stores, and a device may be authorized for multiple
+     stores, but requests are always validated against the active store_id.
+
+The server must validate all of the following before accepting a protected
+request: user session valid, device active, user still has membership in the
+requested store, device has active access for that store, and the request is
+using the correct store context. Device-store access is not a substitute for
+user membership validation.
+
+The user session and the store access context are intentionally different. A
+user may remain authenticated while switching among stores they are allowed to
+access without re-entering credentials for each switch. A device may register
+once and then open multiple store contexts as long as the server authorizes
+those store contexts.
+
+A device revocation is stronger than a session logout. Revoking a device invalidates
+all active sessions for that device and rejects protected requests until the
+device is explicitly rebound with a fresh, authorized re-registration flow.
+
+### Auth and device lifecycle APIs
+
+The future server contract uses a strict sequence:
+
+- `POST /v1/auth/register` — create a user account
+- `POST /v1/auth/login` — authenticate and create a user session
+- `POST /v1/auth/logout` — revoke the current session
+- `POST /v1/auth/refresh` — rotate the refresh token and issue a new access
+  token
+- `DELETE /v1/auth/sessions/{sessionId}` — revoke a specific session
+- `POST /v1/devices/register` — register a device for a user
+- `POST /v1/devices/{deviceId}/revoke` — revoke a device and invalidate all
+  related sessions
+- `POST /v1/devices/rebind` — explicit reactivation flow for a revoked device
+- `POST /v1/stores` — create a store
+- `GET /v1/stores` — list stores visible to the authenticated user
+- `POST /v1/stores/{storeId}/switch` — activate a store-scoped context
+- `POST /v1/sessions/validate` — validate user session, device status, and
+  store access before reconnecting sync flows
+
+The rebind flow must be explicit and authorized by a user with authority over the
+store or device ownership. It cannot be completed through a normal login, a
+stale refresh token, or the local installation ID. All rebind approvals and
+revocations are recorded in an audit log with actor, timestamp, reason, and
+related device/session/store IDs.
 
 ## Database and offline-first strategy
 
@@ -85,6 +160,39 @@ received purchases, transaction edits/deletions, sale returns, and manual
 adjustments all update stock and history atomically. Returns are tied to the
 original sale item and cannot exceed its unreturned quantity. Stock cannot fall
 below zero unless the persisted `allow_negative_stock` setting is enabled.
+
+### Movement identity and idempotency guarantees
+
+The local movement model separates three identifiers that are intentionally not
+interchangeable:
+
+- `id`: the row-level SQLite identity for a persisted movement record.
+- `operation_id`: the local lifecycle ID recorded in
+  `financial_operation_registry` for a retried business operation.
+- `source_type + source_id`: the semantic idempotency key for a movement or a
+  retried operation. A repeated retry with the same business key must not create a
+  second movement row.
+- `event_id`: the sync-event identity used by outbox records and not treated as a
+  movement identity itself.
+
+The current local implementation enforces idempotency checks in repository logic
+before inserting new movement rows. If a duplicate `source_type` + `source_id`
+combination is encountered with the same payload, the code returns the existing
+record instead of creating another row. If the same source identity is reused with
+conflicting content, the repo raises `MovementIdentityConflictException` rather
+than silently overwriting data. This prevents accidental replays of the same
+business action while leaving a visible safety signal for conflicting retries.
+
+The repository does not add a new SQLite UNIQUE constraint for legacy movement
+rows or for `source_type + source_id` because older data may already contain
+repeated or non-normalized values. The project therefore treats this as a
+runtime guard and a documented conflict signal, not as a migration-backed
+uniqueness guarantee. Database-level atomic protection for concurrent writers
+remains a separate design decision and is not claimed by the current code.
+
+This is sufficient for local-first replay protection in non-concurrent single-app
+usage, but it does not prove safe deduplication under parallel writers unless the
+schema is later upgraded with a verified uniqueness constraint and a cleanup plan.
 Active products at or below their minimum stock have low-stock alerts; products
 at zero or below have out-of-stock alerts.
 
@@ -170,14 +278,17 @@ An installation ID is persisted in a separate file under the platform
 application-support directory, outside SQLite snapshots and `.hdb` backup
 files. Android app backup is disabled in the manifest. This does not protect
 against copying the complete private application data directory, and must not
-be treated as a hardware-bound or tamper-proof identity.
+be treated as a hardware-bound or tamper-proof identity. The installation ID
+is not used to grant access or prove user ownership.
 
 ## Navigation
 
 The root route is the dashboard. Sales, products, inventory, reports, and
 global search are available from the dashboard; a business-management menu
-opens customers, suppliers, and purchases. Navigation guards will be added
-when authentication or business selection is introduced.
+opens customers, suppliers, and purchases. Future authentication and store
+selection will use an explicit store-scoped route guard that validates the
+user session, active device registration, and the selected store context before
+allowing access.
 
 ## Dependencies
 
@@ -218,3 +329,46 @@ debug key until the owner configures a private production keystore.
 
 For setup, release, and verification details see
 [docs/RELEASE_CHECKLIST.md](./docs/RELEASE_CHECKLIST.md).
+
+## Acceptance criteria for the first online auth/store/device phase
+
+The design is acceptable when the following can be demonstrated in a follow-up
+implementation review:
+
+- A user can register and log in using valid credentials.
+- A valid user session is distinct from the store-scoped access context.
+- A user with multiple stores can switch between authorized stores without new
+  login credentials for each switch.
+- A registered device can access multiple authorized stores, each with its own
+  sync state and cursor.
+- A revoked device cannot create new sessions, cannot sync, and cannot access
+  protected requests until a fresh rebind approval is granted.
+- A regular login, stale refresh token, or installation ID cannot re-enable a
+  revoked device.
+- A store-scoped request cannot change its store_id to access another store.
+- User membership is required before any store access is granted.
+- Local offline work continues without a server connection, and reconnect
+  triggers explicit validation before resuming online activity.
+- Device logout, session revocation, and full device revocation have distinct
+  and testable effects.
+- All sensitive actions are recorded in an audit log with actor, target, time,
+  reason, and result.
+
+## Closed design decisions
+
+- Centralized online server is the required coordination layer.
+- Local offline work remains valid and must not require immediate online
+  authentication.
+- Users may own multiple stores.
+- Devices may access multiple authorized stores, with separate access state and
+  sync cursor per store.
+- installation_id is not an authentication or authorization mechanism.
+- Revoked devices do not resume automatically and require explicit rebind.
+- Financial sync and monetary transaction sync remain outside the first phase.
+
+## Open technical decision before implementation
+
+One design decision still needs explicit approval before implementation starts:
+whether device rebind is approved by the same user only, or by a separate
+owner/admin role for each store. This affects the authorization model for
+device rebind requests and the exact audit policy for those approvals.

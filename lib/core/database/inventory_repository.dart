@@ -3,6 +3,12 @@ import 'package:sqflite/sqflite.dart';
 import 'models/inventory_movement.dart';
 import 'models/model_utils.dart';
 
+bool _matchesInventoryMovementPayload(
+  Map<String, Object?> existing,
+  Map<String, Object?> candidate,
+) =>
+    movementPayloadsMatch(existing, candidate);
+
 class InventoryRepository {
   InventoryRepository(this._database);
 
@@ -217,6 +223,42 @@ class InventoryRepository {
     final normalizedNewQuantity = newQuantity.abs() < 0.000001
         ? 0.0
         : newQuantity;
+    final normalizedSourceType = (sourceType ?? '').trim();
+    final normalizedSourceId = (sourceId ?? '').trim();
+    if (normalizedSourceType.isNotEmpty && normalizedSourceId.isNotEmpty) {
+      final duplicates = await transaction.query(
+        'inventory_history',
+        where: 'source_type = ? AND source_id = ?',
+        whereArgs: [normalizedSourceType, normalizedSourceId],
+        limit: 1,
+      );
+      if (duplicates.isNotEmpty) {
+        final existing = InventoryMovement.fromMap(duplicates.single);
+        final candidate = InventoryMovement(
+          id: newModelId(),
+          productId: productId,
+          productName: requiredString(product, 'name'),
+          reason: reason.trim(),
+          quantity: normalizedNewQuantity - previousQuantity,
+          previousQuantity: previousQuantity,
+          newQuantity: normalizedNewQuantity,
+          date: date.toUtc(),
+          note: _cleanNote(note),
+          sourceType: normalizedSourceType,
+          sourceId: normalizedSourceId,
+        );
+        if (_matchesInventoryMovementPayload(existing.toMap(), candidate.toMap())) {
+          return;
+        }
+        throw MovementIdentityConflictException(
+          kind: 'inventory movement',
+          sourceType: normalizedSourceType,
+          sourceId: normalizedSourceId,
+          existingSummary: '${existing.productId}:${existing.reason}:${existing.quantity}',
+          requestSummary: '$productId:${reason.trim()}:${normalizedNewQuantity - previousQuantity}',
+        );
+      }
+    }
     await transaction.update(
       'products',
       {
@@ -236,8 +278,8 @@ class InventoryRepository {
       newQuantity: normalizedNewQuantity,
       date: date.toUtc(),
       note: _cleanNote(note),
-      sourceType: sourceType,
-      sourceId: sourceId,
+      sourceType: normalizedSourceType.isEmpty ? null : normalizedSourceType,
+      sourceId: normalizedSourceId.isEmpty ? null : normalizedSourceId,
     );
     await transaction.insert(
       'inventory_history',

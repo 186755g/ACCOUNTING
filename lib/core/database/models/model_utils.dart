@@ -16,6 +16,59 @@ String newModelId() {
       '${value.substring(20)}';
 }
 
+class MovementIdentityConflictException implements Exception {
+  MovementIdentityConflictException({
+    required this.kind,
+    required this.sourceType,
+    required this.sourceId,
+    this.existingSummary,
+    this.requestSummary,
+  });
+
+  final String kind;
+  final String sourceType;
+  final String sourceId;
+  final String? existingSummary;
+  final String? requestSummary;
+
+  @override
+  String toString() {
+    final existing = existingSummary == null ? 'existing payload differs' : existingSummary;
+    final requested = requestSummary == null ? 'requested payload differs' : requestSummary;
+    return 'Movement identity conflict for $kind: source_type=$sourceType, '
+        'source_id=$sourceId. Existing: $existing. Requested: $requested.';
+  }
+}
+
+String normalizeMovementIdentity(String? sourceType, String? sourceId) {
+  final normalizedType = (sourceType ?? '').trim();
+  final normalizedId = (sourceId ?? '').trim();
+  if (normalizedType.isEmpty || normalizedId.isEmpty) {
+    return '';
+  }
+  return '$normalizedType:$normalizedId';
+}
+
+bool movementPayloadsMatch(Map<String, Object?> left, Map<String, Object?> right) {
+  final normalizedLeft = Map<String, Object?>.from(left)
+    ..remove('id')
+    ..remove('created_at')
+    ..remove('updated_at');
+  final normalizedRight = Map<String, Object?>.from(right)
+    ..remove('id')
+    ..remove('created_at')
+    ..remove('updated_at');
+  if (normalizedLeft.length != normalizedRight.length) {
+    return false;
+  }
+  for (final entry in normalizedLeft.entries) {
+    if (!normalizedRight.containsKey(entry.key) || normalizedRight[entry.key] != entry.value) {
+      return false;
+    }
+  }
+  return true;
+}
+
 int dateToDatabase(DateTime value) => value.toUtc().millisecondsSinceEpoch;
 
 DateTime dateFromDatabase(Object? value) {
