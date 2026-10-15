@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../services/installation_identity_store.dart';
+import 'financial_account_repository.dart';
 import 'models/model_utils.dart';
 import 'models/purchase.dart';
 import 'models/purchase_item.dart';
@@ -16,7 +17,9 @@ class PurchaseRepository {
     Database database, {
     required this._installationIdentity,
     required this._outbox,
+    FinancialAccountRepository? financialAccounts,
   }) : _database = database,
+       _financialAccounts = financialAccounts ?? FinancialAccountRepository(database),
        _inventory = InventoryRepository(database),
        _purchases = SqliteEntityRepository<_PurchaseRow>(
          database,
@@ -30,6 +33,7 @@ class PurchaseRepository {
   final Database _database;
   final InstallationIdentityStore _installationIdentity;
   final SyncOutboxRepository _outbox;
+  final FinancialAccountRepository _financialAccounts;
   final InventoryRepository _inventory;
   final SqliteEntityRepository<_PurchaseRow> _purchases;
 
@@ -63,16 +67,25 @@ class PurchaseRepository {
       await _createInTransaction(purchase, transaction);
       final createdPayments = <Payment>[];
       for (final tender in tenders) {
+        final financialAccountId = await _financialAccounts.resolveAccountIdForPayment(
+          tender.method,
+          database: transaction,
+        );
         final payment = Payment(
           purchaseId: purchase.id,
           amountMinor: tender.amountMinor,
           method: tender.method,
           date: purchase.date,
+          financialAccountId: financialAccountId,
         );
         await transaction.insert(
           'payments',
           payment.toMap(),
           conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        await _financialAccounts.recordPaymentMovement(
+          payment,
+          transaction: transaction,
         );
         createdPayments.add(payment);
         if (installationId != null) {

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
@@ -262,7 +263,9 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
   Widget build(BuildContext context) {
     final strings = AppLocalizations.of(context);
     return Directionality(
-      textDirection: strings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+      textDirection: strings.isArabic
+          ? ui.TextDirection.rtl
+          : ui.TextDirection.ltr,
       child: Scaffold(
         appBar: AppBar(title: Text(strings.profileTitle)),
         body: Center(

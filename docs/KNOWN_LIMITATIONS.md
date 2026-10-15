@@ -29,10 +29,15 @@
   screen layers respect search/date/filter resets and retry states, but the full
   widget-level large-list flow remains unconfirmed in this Linux test
   environment.
-- The financial-account ledger is implemented at the database and repository
-  layer, but the dedicated account-management and daily-reconciliation UI is
-  still pending. The core schema supports cash, bank, card, and wallet account
-  types, book balance tracking, and reconciliation variance records.
+- The financial-account ledger and dedicated account-management plus daily
+  reconciliation UI are now implemented at the repository and screen layer. The
+  core schema supports cash, bank, card, and wallet account types, book balance
+  tracking, and reconciliation variance records without altering the source
+  ledger balances.
+- Existing sales, purchases, and expense payment records are not automatically
+  assigned to financial-account postings unless the business explicitly defines a
+  mapping rule. The app intentionally avoids inventing unsupported historical
+  links.
 - Notification presentation, receipt printing, file sharing, and file picking
   depend on their host-platform integrations and require device-level testing.
 - No clean-device Android install, store listing, production signature, or

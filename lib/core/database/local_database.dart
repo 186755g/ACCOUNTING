@@ -90,6 +90,7 @@ class LocalDatabase {
           'purchase_id',
           'debt_id',
           'expense_id',
+          'financial_account_id',
           'user_id',
           'method',
           'amount_minor',
@@ -107,22 +108,25 @@ class LocalDatabase {
       settings = AppSettingsRepository(_database),
       sales = SaleRepository(
         _database,
+        financialAccounts: FinancialAccountRepository(_database),
         installationIdentity: installationIdentity,
         outbox: SyncOutboxRepository(_database),
       ),
       purchases = PurchaseRepository(
         _database,
+        financialAccounts: FinancialAccountRepository(_database),
         installationIdentity: installationIdentity,
         outbox: SyncOutboxRepository(_database),
       ),
       partyAccounts = PartyAccountRepository(
         _database,
+        financialAccounts: FinancialAccountRepository(_database),
         installationIdentity: installationIdentity,
         outbox: SyncOutboxRepository(_database),
       ),
       inventory = InventoryRepository(_database);
 
-  static const databaseVersion = 9;
+  static const databaseVersion = 10;
   static const databaseName = 'hesabati.db';
 
   final Database _database;
@@ -395,6 +399,25 @@ class LocalDatabase {
     if (oldVersion < 9) {
       await _createFinancialAccountSchema(database);
     }
+    if (oldVersion < 10) {
+      final tableRows = await database.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'payments'",
+      );
+      if (tableRows.isNotEmpty) {
+        final columns = await database.rawQuery(
+          'PRAGMA table_info(payments)',
+        );
+        final hasFinancialAccountId = columns.any(
+          (column) => column['name'] == 'financial_account_id',
+        );
+        if (!hasFinancialAccountId) {
+          await database.execute(
+            'ALTER TABLE payments ADD COLUMN financial_account_id TEXT '
+            'REFERENCES financial_accounts(id) ON DELETE SET NULL',
+          );
+        }
+      }
+    }
   }
 
   static Future<void> _createSchema(Database database) async {
@@ -568,6 +591,7 @@ class LocalDatabase {
         debt_id TEXT REFERENCES debts(id) ON DELETE RESTRICT,
         expense_id TEXT REFERENCES expenses(id) ON DELETE RESTRICT,
         user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        financial_account_id TEXT REFERENCES financial_accounts(id) ON DELETE SET NULL,
         amount_minor INTEGER NOT NULL CHECK (amount_minor > 0),
         method TEXT NOT NULL CHECK (
           method IN ('cash', 'card', 'bankTransfer', 'mobileWallet', 'other')

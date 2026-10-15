@@ -10,6 +10,7 @@ import '../core/services/local_alert_service.dart';
 import '../features/account/presentation/account_profile_screen.dart';
 import '../features/dashboard/presentation/dashboard_screen.dart';
 import '../features/expenses/presentation/expense_management_screen.dart';
+import '../features/financial/presentation/financial_accounts_screen.dart';
 import '../features/inventory/presentation/inventory_management_screen.dart';
 import '../features/parties/presentation/party_management_screen.dart';
 import '../features/products/presentation/product_management_screen.dart';
@@ -221,6 +222,13 @@ class _HesabatiAppState extends State<HesabatiApp> with WidgetsBindingObserver {
             Navigator.of(context).push<void>(
               MaterialPageRoute(
                 builder: (_) => InventoryManagementScreen(database: _database),
+              ),
+            );
+          },
+          onFinancialAccountsPressed: () {
+            Navigator.of(context).push<void>(
+              MaterialPageRoute(
+                builder: (_) => FinancialAccountsScreen(database: _database),
               ),
             );
           },

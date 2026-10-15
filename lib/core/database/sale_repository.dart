@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../services/installation_identity_store.dart';
+import 'financial_account_repository.dart';
 import 'models/model_utils.dart';
 import 'models/debt.dart';
 import 'models/payment.dart';
@@ -14,11 +15,11 @@ import 'sync_outbox_repository.dart';
 class SaleRepository {
   SaleRepository(
     Database database, {
-    required InstallationIdentityStore installationIdentity,
-    required SyncOutboxRepository outbox,
+    required this._installationIdentity,
+    required this._outbox,
+    FinancialAccountRepository? financialAccounts,
   }) : _database = database,
-       _installationIdentity = installationIdentity,
-       _outbox = outbox,
+       _financialAccounts = financialAccounts ?? FinancialAccountRepository(database),
        _inventory = InventoryRepository(database),
        _sales = SqliteEntityRepository<_SaleRow>(
          database,
@@ -32,6 +33,7 @@ class SaleRepository {
   final Database _database;
   final InstallationIdentityStore _installationIdentity;
   final SyncOutboxRepository _outbox;
+  final FinancialAccountRepository _financialAccounts;
   final InventoryRepository _inventory;
   final SqliteEntityRepository<_SaleRow> _sales;
 
@@ -82,16 +84,25 @@ class SaleRepository {
       await _createInTransaction(sale, transaction);
       final createdPayments = <Payment>[];
       for (final tender in tenders) {
+        final financialAccountId = await _financialAccounts.resolveAccountIdForPayment(
+          tender.method,
+          database: transaction,
+        );
         final payment = Payment(
           saleId: sale.id,
           amountMinor: tender.amountMinor,
           method: tender.method,
           date: sale.date,
+          financialAccountId: financialAccountId,
         );
         await transaction.insert(
           'payments',
           payment.toMap(),
           conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+        await _financialAccounts.recordPaymentMovement(
+          payment,
+          transaction: transaction,
         );
         createdPayments.add(payment);
         if (installationId != null) {

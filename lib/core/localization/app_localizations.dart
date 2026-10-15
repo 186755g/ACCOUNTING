@@ -300,6 +300,60 @@ class AppLocalizations {
       isArabic ? 'الإيرادات هذا الشهر' : 'Revenue this month';
   String get viewMode => isArabic ? 'تغيير المظهر' : 'Toggle appearance';
   String get account => isArabic ? 'حساب المتجر' : 'Store account';
+  String get financialAccounts =>
+      isArabic ? 'الحسابات المالية' : 'Financial accounts';
+  String get accountsTab => isArabic ? 'الحسابات' : 'Accounts';
+  String get reconciliationTab => isArabic ? 'المطابقة' : 'Reconciliation';
+  String get bank => isArabic ? 'بنك' : 'Bank';
+  String get mobileWallet => isArabic ? 'محفظة إلكترونية' : 'Mobile wallet';
+  String get other => isArabic ? 'أخرى' : 'Other';
+  String get accountType => isArabic ? 'نوع الحساب' : 'Account type';
+  String get openingBalance =>
+      isArabic ? 'الرصيد الافتتاحي' : 'Opening balance';
+  String get currentBalance => isArabic ? 'الرصيد الحالي' : 'Current balance';
+  String get accountNumber => isArabic ? 'رقم الحساب' : 'Account number';
+  String get addAccount => isArabic ? 'إضافة حساب' : 'Add account';
+  String get accountCreated =>
+      isArabic ? 'تم إنشاء الحساب.' : 'Account created.';
+  String get noFinancialAccounts =>
+      isArabic ? 'لا توجد حسابات مالية بعد.' : 'No financial accounts yet.';
+  String get viewDetails => isArabic ? 'عرض التفاصيل' : 'View details';
+  String get accountMovements =>
+      isArabic ? 'حركات الحساب' : 'Account movements';
+  String get noAccountMovements => isArabic
+      ? 'لا توجد حركات لهذا الحساب بعد.'
+      : 'No movements for this account yet.';
+  String get noReference => isArabic ? 'بدون مرجع' : 'No reference';
+  String get transfer => isArabic ? 'تحويل' : 'Transfer';
+  String get transferSaved =>
+      isArabic ? 'تم تسجيل التحويل.' : 'Transfer saved.';
+  String get noTransferTargets => isArabic
+      ? 'لا توجد حسابات أخرى لتحويل إليها.'
+      : 'No other accounts are available for transfer.';
+  String get destinationAccount =>
+      isArabic ? 'الحساب الوجهة' : 'Destination account';
+  String get transferCommission =>
+      isArabic ? 'عمولة التحويل' : 'Transfer commission';
+  String get deposit => isArabic ? 'إيداع' : 'Deposit';
+  String get withdrawal => isArabic ? 'سحب' : 'Withdrawal';
+  String get commission => isArabic ? 'عمولة' : 'Commission';
+  String get operationSaved =>
+      isArabic ? 'تم حفظ العملية.' : 'Operation saved.';
+  String get reference => isArabic ? 'المرجع' : 'Reference';
+  String get actualBalance => isArabic ? 'الرصيد الفعلي' : 'Actual balance';
+  String get bookBalance => isArabic ? 'الرصيد الدفتري' : 'Book balance';
+  String get difference => isArabic ? 'الفرق' : 'Difference';
+  String get saveReconciliation =>
+      isArabic ? 'حفظ المطابقة' : 'Save reconciliation';
+  String get reconciliationSaved =>
+      isArabic ? 'تم حفظ المطابقة.' : 'Reconciliation saved.';
+  String get previousReconciliations =>
+      isArabic ? 'المطابقات السابقة' : 'Previous reconciliations';
+  String get noReconciliations =>
+      isArabic ? 'لا توجد مطابقات سابقة.' : 'No previous reconciliations.';
+  String get reconciliationNote =>
+      isArabic ? 'مطابقة يومية' : 'Daily reconciliation';
+  String get date => isArabic ? 'التاريخ' : 'Date';
   String get profileTitle =>
       isArabic ? 'ملف النشاط التجاري' : 'Business profile';
   String get offlineProfileNotice => isArabic

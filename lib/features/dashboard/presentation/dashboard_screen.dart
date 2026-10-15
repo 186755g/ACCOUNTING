@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import '../../../core/database/database.dart';
@@ -16,6 +18,7 @@ class DashboardScreen extends StatefulWidget {
     required this.onNewSalePressed,
     required this.onSalesPressed,
     required this.onInventoryPressed,
+    required this.onFinancialAccountsPressed,
     required this.onAccountPressed,
     required this.onCustomersPressed,
     required this.onSuppliersPressed,
@@ -37,6 +40,7 @@ class DashboardScreen extends StatefulWidget {
   final VoidCallback onNewSalePressed;
   final VoidCallback onSalesPressed;
   final VoidCallback onInventoryPressed;
+  final VoidCallback onFinancialAccountsPressed;
   final VoidCallback onAccountPressed;
   final VoidCallback onCustomersPressed;
   final VoidCallback onSuppliersPressed;
@@ -115,6 +119,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 Icons.warehouse_outlined,
               ),
               _menuItem(
+                'financial-accounts',
+                strings.financialAccounts,
+                Icons.account_balance_wallet_outlined,
+              ),
+              _menuItem(
                 'analytics',
                 strings.analytics,
                 Icons.insights_outlined,
@@ -136,6 +145,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         widget.onExpensesPressed();
       case 'inventory':
         widget.onInventoryPressed();
+      case 'financial-accounts':
+        widget.onFinancialAccountsPressed();
       case 'analytics':
         widget.onAnalyticsPressed();
       case 'reports':
@@ -218,7 +229,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final strings = AppLocalizations.of(context);
 
     return Directionality(
-      textDirection: strings.isArabic ? TextDirection.rtl : TextDirection.ltr,
+      textDirection: strings.isArabic
+          ? ui.TextDirection.rtl
+          : ui.TextDirection.ltr,
       child: Scaffold(
         appBar: AppBar(
           titleSpacing: 24,

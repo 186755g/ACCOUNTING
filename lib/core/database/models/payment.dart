@@ -10,6 +10,7 @@ class Payment implements DatabaseEntity {
     this.debtId,
     this.expenseId,
     this.userId,
+    this.financialAccountId,
     required this.amountMinor,
     required this.method,
     DateTime? date,
@@ -36,6 +37,7 @@ class Payment implements DatabaseEntity {
   final String? debtId;
   final String? expenseId;
   final String? userId;
+  final String? financialAccountId;
   final int amountMinor;
   final PaymentMethod method;
   final DateTime date;
@@ -50,6 +52,7 @@ class Payment implements DatabaseEntity {
         'debt_id': debtId,
         'expense_id': expenseId,
         'user_id': userId,
+        'financial_account_id': financialAccountId,
         'amount_minor': amountMinor,
         'method': method.name,
         'date_at': dateToDatabase(date),
@@ -72,6 +75,7 @@ class Payment implements DatabaseEntity {
       debtId: nullableString(map, 'debt_id'),
       expenseId: nullableString(map, 'expense_id'),
       userId: nullableString(map, 'user_id'),
+      financialAccountId: nullableString(map, 'financial_account_id'),
       amountMinor: requiredInt(map, 'amount_minor'),
       method: methods.first,
       date: dateFromDatabase(map['date_at']),

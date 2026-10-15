@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hesabati/core/database/database.dart';
 import 'package:hesabati/core/services/spreadsheet_export.dart';
@@ -580,5 +582,228 @@ void main() {
     expect(reconciliation.actualBalanceMinor, 1490);
     expect(reconciliation.varianceMinor, -10);
     expect(reconciliation.status, 'variance');
+  });
+
+  test('tracks opening balances, deposits, withdrawals, and commissions once', () async {
+    final account = FinancialAccount(
+      name: 'Bank account',
+      type: FinancialAccountType.bank,
+      openingBalanceMinor: 2000,
+      accountNumber: '123456',
+    );
+    await database.financialAccounts.create(account);
+
+    await database.financialAccounts.recordDeposit(
+      accountId: account.id,
+      amountMinor: 750,
+      description: 'Customer transfer',
+      date: DateTime.utc(2025, 7, 4),
+      reference: 'dep-1',
+    );
+    await database.financialAccounts.recordWithdrawal(
+      accountId: account.id,
+      amountMinor: 300,
+      description: 'Supplier payment',
+      date: DateTime.utc(2025, 7, 5),
+      reference: 'wd-1',
+    );
+    await database.financialAccounts.recordCommission(
+      accountId: account.id,
+      amountMinor: 25,
+      description: 'Bank commission',
+      date: DateTime.utc(2025, 7, 6),
+      reference: 'fee-1',
+    );
+
+    expect(await database.financialAccounts.getBalance(account.id), 2425);
+
+    final movements = await database.financialAccounts.getMovements(
+      accountId: account.id,
+      limit: 10,
+    );
+    expect(movements, hasLength(3));
+    expect(
+      movements.map((movement) => movement.direction).toList(),
+      containsAll([AccountMovementDirection.credit, AccountMovementDirection.debit]),
+    );
+    expect(
+      movements.where((movement) => movement.description == 'Bank commission'),
+      hasLength(1),
+    );
+  });
+
+  test('transfers funds atomically and rejects duplicate transfer attempts', () async {
+    final source = FinancialAccount(
+      name: 'Source account',
+      type: FinancialAccountType.bank,
+      openingBalanceMinor: 5000,
+    );
+    final destination = FinancialAccount(
+      name: 'Destination account',
+      type: FinancialAccountType.mobileWallet,
+      openingBalanceMinor: 1000,
+    );
+    await database.financialAccounts.create(source);
+    await database.financialAccounts.create(destination);
+
+    final transfer = await database.financialAccounts.transferBetweenAccounts(
+      fromAccountId: source.id,
+      toAccountId: destination.id,
+      amountMinor: 1200,
+      date: DateTime.utc(2025, 7, 10),
+      reference: 'transfer-001',
+      description: 'Daily cash settlement',
+    );
+
+    expect(transfer.sourceAccountId, source.id);
+    expect(transfer.destinationAccountId, destination.id);
+    expect(transfer.amountMinor, 1200);
+    expect(await database.financialAccounts.getBalance(source.id), 3800);
+    expect(await database.financialAccounts.getBalance(destination.id), 2200);
+
+    await expectLater(
+      database.financialAccounts.transferBetweenAccounts(
+        fromAccountId: source.id,
+        toAccountId: destination.id,
+        amountMinor: 100,
+        date: DateTime.utc(2025, 7, 10),
+        reference: 'transfer-001',
+      ),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test('rejects a duplicate transfer without leaving a partial transfer behind', () async {
+    final source = FinancialAccount(
+      name: 'Transfer source',
+      type: FinancialAccountType.bank,
+      openingBalanceMinor: 2000,
+    );
+    final destination = FinancialAccount(
+      name: 'Transfer destination',
+      type: FinancialAccountType.bank,
+      openingBalanceMinor: 500,
+    );
+    await database.financialAccounts.create(source);
+    await database.financialAccounts.create(destination);
+
+    await database.financialAccounts.transferBetweenAccounts(
+      fromAccountId: source.id,
+      toAccountId: destination.id,
+      amountMinor: 1000,
+      date: DateTime.utc(2025, 7, 12),
+      reference: 'transfer-rollback',
+    );
+
+    await expectLater(
+      database.financialAccounts.transferBetweenAccounts(
+        fromAccountId: source.id,
+        toAccountId: destination.id,
+        amountMinor: 250,
+        date: DateTime.utc(2025, 7, 12),
+        reference: 'transfer-rollback',
+      ),
+      throwsA(isA<StateError>()),
+    );
+
+    expect(await database.financialAccounts.getBalance(source.id), 1000);
+    expect(await database.financialAccounts.getBalance(destination.id), 1500);
+  });
+
+  test('prevents deleting an account once it has movements and records variance without changing book balance', () async {
+    final account = FinancialAccount(
+      name: 'Protected account',
+      type: FinancialAccountType.bank,
+      openingBalanceMinor: 300,
+    );
+    await database.financialAccounts.create(account);
+    await database.financialAccounts.recordMovement(
+      accountId: account.id,
+      direction: AccountMovementDirection.credit,
+      amountMinor: 200,
+      date: DateTime.utc(2025, 7, 10),
+      description: 'Initial top-up',
+      reference: 'case-protect-001',
+    );
+
+    final deleted = await database.financialAccounts.delete(account.id);
+    expect(deleted, isFalse);
+
+    final reconciliation = await database.financialAccounts.reconcileDaily(
+      accountId: account.id,
+      date: DateTime.utc(2025, 7, 15),
+      actualBalanceMinor: 450,
+      note: 'Cash count',
+    );
+    expect(reconciliation.bookBalanceMinor, 500);
+    expect(reconciliation.varianceMinor, -50);
+    expect(reconciliation.status, 'variance');
+    expect(await database.financialAccounts.getBalance(account.id), 500);
+  });
+
+  test('migrates the database from v8 to v9 without losing data and preserves schema integrity', () async {
+    final tempDir = await Directory.systemTemp.createTemp(
+      'hesabati-v8-migration-',
+    );
+    addTearDown(() => tempDir.delete(recursive: true));
+    final legacyPath = '${tempDir.path}/legacy-v8.db';
+
+    final legacyDb = await databaseFactoryFfi.openDatabase(
+      legacyPath,
+      options: OpenDatabaseOptions(
+        version: 8,
+        onCreate: (database, version) async {
+          await database.execute('''
+            CREATE TABLE app_settings (
+              id TEXT PRIMARY KEY CHECK (id = '1'),
+              business_name TEXT NOT NULL DEFAULT '',
+              owner_name TEXT NOT NULL DEFAULT '',
+              phone TEXT NOT NULL DEFAULT '',
+              currency_code TEXT NOT NULL DEFAULT 'EGP',
+              locale_code TEXT NOT NULL DEFAULT 'ar',
+              business_type TEXT NOT NULL DEFAULT 'other',
+              theme_mode TEXT NOT NULL DEFAULT 'system',
+              allow_negative_stock INTEGER NOT NULL DEFAULT 0,
+              updated_at INTEGER NOT NULL
+            )
+          ''');
+          await database.rawInsert(
+            'INSERT INTO app_settings (id, updated_at) VALUES (?, ?)',
+            ['1', DateTime.utc(2025, 5, 1).millisecondsSinceEpoch],
+          );
+        },
+      ),
+    );
+
+    try {
+      final legacySettings = await legacyDb.query('app_settings');
+      expect(legacySettings, isNotEmpty);
+      await legacyDb.close();
+
+      final upgraded = await LocalDatabase.open(
+        databasePath: legacyPath,
+        factory: databaseFactoryFfi,
+        installationIdentity: InstallationIdentityStore(
+          directoryProvider: () async => tempDir,
+        ),
+      );
+      try {
+        final financialTables = await upgraded.transaction(
+          (transaction) => transaction.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('financial_accounts','account_movements','account_reconciliations')",
+          ),
+        );
+        expect(financialTables, hasLength(3));
+        final settings = await upgraded.settings.get();
+        expect(settings, isNotNull);
+        expect(settings!.businessName, isEmpty);
+      } finally {
+        await upgraded.close();
+      }
+    } finally {
+      if (legacyDb.isOpen) {
+        await legacyDb.close();
+      }
+    }
   });
 }

@@ -69,6 +69,215 @@ void main() {
     expect(await database.settings.get(), isNotNull);
   });
 
+  test('links cash and wallet payments to financial accounts once only', () async {
+    await database.financialAccounts.create(
+      FinancialAccount(
+        name: 'Cash Box',
+        type: FinancialAccountType.cash,
+      ),
+    );
+    await database.financialAccounts.create(
+      FinancialAccount(
+        name: 'Wallet',
+        type: FinancialAccountType.mobileWallet,
+      ),
+    );
+
+    final customer = Customer(name: 'Linked customer');
+    await database.customers.create(customer);
+    final product = Product(
+      id: 'linked-product',
+      name: 'Linked product',
+      costPriceMinor: 100,
+      sellingPriceMinor: 200,
+      stockQuantity: 5,
+    );
+    await database.products.create(product);
+
+    const saleId = 'linked-sale';
+    await database.sales.checkout(
+      Sale(
+        id: saleId,
+        customerId: customer.id,
+        items: [
+          SaleItem(
+            saleId: saleId,
+            productId: product.id,
+            productName: product.name,
+            quantity: 1,
+            sellingPriceMinor: 200,
+            costPriceMinor: 100,
+          ),
+        ],
+      ),
+      tenders: const [SaleTender(method: PaymentMethod.cash, amountMinor: 200)],
+    );
+
+    final cash = (await database.financialAccounts.getAll()).singleWhere(
+      (account) => account.type == FinancialAccountType.cash,
+    );
+    final cashMovements = await database.financialAccounts.getMovements(
+      accountId: cash.id,
+    );
+    expect(cashMovements, hasLength(1));
+    expect(cashMovements.single.direction, AccountMovementDirection.credit);
+    expect(cashMovements.single.amountMinor, 200);
+    expect(cashMovements.single.sourceType, 'payment');
+
+    final payment = (await database.payments.getAll(filters: {'sale_id': saleId}))
+        .single;
+    final secondMovement = await database.financialAccounts.recordPaymentMovement(
+      payment,
+      transaction: null,
+    );
+    expect(secondMovement, isNotNull);
+    expect(
+      (await database.financialAccounts.getMovements(accountId: cash.id)),
+      hasLength(1),
+    );
+
+    final supplier = Supplier(name: 'Linked supplier');
+    await database.suppliers.create(supplier);
+    const purchaseId = 'linked-purchase';
+    await database.purchases.checkout(
+      Purchase(
+        id: purchaseId,
+        supplierId: supplier.id,
+        items: [
+          PurchaseItem(
+            purchaseId: purchaseId,
+            productId: product.id,
+            productName: product.name,
+            quantity: 1,
+            costPriceMinor: 90,
+          ),
+        ],
+      ),
+      tenders: const [SaleTender(method: PaymentMethod.mobileWallet, amountMinor: 90)],
+    );
+
+    final wallet = (await database.financialAccounts.getAll()).singleWhere(
+      (account) => account.type == FinancialAccountType.mobileWallet,
+    );
+    final walletMovements = await database.financialAccounts.getMovements(
+      accountId: wallet.id,
+    );
+    expect(walletMovements, hasLength(1));
+    expect(walletMovements.single.direction, AccountMovementDirection.debit);
+    expect(walletMovements.single.amountMinor, 90);
+  });
+
+  test('accounts for part payments only and ignores legacy payments without a trusted account', () async {
+    final account = FinancialAccount(
+      name: 'Collection account',
+      type: FinancialAccountType.bank,
+      openingBalanceMinor: 0,
+    );
+    await database.financialAccounts.create(account);
+
+    final customer = Customer(name: 'Partial customer');
+    await database.customers.create(customer);
+    final product = Product(
+      id: 'partial-product',
+      name: 'Partial product',
+      costPriceMinor: 50,
+      sellingPriceMinor: 100,
+      stockQuantity: 10,
+    );
+    await database.products.create(product);
+
+    const saleId = 'partial-sale';
+    await database.sales.checkout(
+      Sale(
+        id: saleId,
+        customerId: customer.id,
+        items: [
+          SaleItem(
+            saleId: saleId,
+            productId: product.id,
+            productName: product.name,
+            quantity: 1,
+            sellingPriceMinor: 100,
+            costPriceMinor: 50,
+          ),
+        ],
+      ),
+      tenders: const [SaleTender(method: PaymentMethod.bankTransfer, amountMinor: 40)],
+    );
+
+    final payment = (await database.payments.getAll(filters: {'sale_id': saleId})).single;
+    expect(payment.financialAccountId, isNotNull);
+    expect(payment.amountMinor, 40);
+    expect(await database.financialAccounts.getBalance(account.id), 40);
+
+    final legacyPayment = Payment(
+      saleId: 'legacy-sale',
+      amountMinor: 30,
+      method: PaymentMethod.cash,
+      date: DateTime.utc(2024, 1, 1),
+    );
+    expect(await database.financialAccounts.recordPaymentMovement(legacyPayment), isNull);
+  });
+
+  test('rolls back the linked account movement if the payment transaction fails', () async {
+    final account = FinancialAccount(
+      name: 'Rollback account',
+      type: FinancialAccountType.cash,
+    );
+    await database.financialAccounts.create(account);
+
+    const saleId = 'rollback-sale';
+    await database.products.create(
+      Product(
+        id: 'rollback-product',
+        name: 'Rollback product',
+        costPriceMinor: 50,
+        sellingPriceMinor: 100,
+        stockQuantity: 10,
+      ),
+    );
+    await database.sales.create(
+      Sale(
+        id: saleId,
+        customerId: null,
+        items: [
+          SaleItem(
+            saleId: saleId,
+            productId: 'rollback-product',
+            productName: 'Rollback product',
+            quantity: 1,
+            sellingPriceMinor: 100,
+            costPriceMinor: 50,
+          ),
+        ],
+      ),
+    );
+
+    final payment = Payment(
+      saleId: saleId,
+      amountMinor: 60,
+      method: PaymentMethod.cash,
+      financialAccountId: account.id,
+      date: DateTime.utc(2025, 1, 1),
+    );
+
+    await expectLater(
+      () async {
+        await database.transaction((transaction) async {
+          await transaction.insert('payments', payment.toMap());
+          await database.financialAccounts.recordPaymentMovement(
+            payment,
+            transaction: transaction,
+          );
+          throw StateError('simulate rollback');
+        });
+      }(),
+      throwsA(isA<StateError>()),
+    );
+
+    expect(await database.financialAccounts.getMovements(accountId: account.id), isEmpty);
+  });
+
   test(
     'checks out sales and purchases with separate receivable/payable balances',
     () async {

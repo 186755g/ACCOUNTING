@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 
 import '../services/installation_identity_store.dart';
+import 'financial_account_repository.dart';
 import 'models/debt.dart';
 import 'models/model_utils.dart';
 import 'models/payment.dart';
@@ -11,11 +12,14 @@ class PartyAccountRepository {
     Database database, {
     required this._installationIdentity,
     required this._outbox,
-  }) : _database = database;
+    FinancialAccountRepository? financialAccounts,
+  }) : _database = database,
+       _financialAccounts = financialAccounts ?? FinancialAccountRepository(database);
 
   final Database _database;
   final InstallationIdentityStore _installationIdentity;
   final SyncOutboxRepository _outbox;
+  final FinancialAccountRepository _financialAccounts;
 
   Future<PartyAccountSummary> getCustomerSummary(String customerId) =>
       _getSummary(
@@ -163,6 +167,7 @@ class PartyAccountRepository {
     required PaymentMethod method,
     DateTime? date,
     String? notes,
+    String? financialAccountId,
   }) async {
     final installationId = await _installationIdentity.getOrCreateSafe();
     return _database.transaction((transaction) async {
@@ -185,14 +190,24 @@ class PartyAccountRepository {
           'Payment must be positive and no greater than the outstanding debt.',
         );
       }
+      final resolvedAccountId = financialAccountId ??
+          await _financialAccounts.resolveAccountIdForPayment(
+            method,
+            database: transaction,
+          );
       final payment = Payment(
         debtId: debtId,
         amountMinor: amountMinor,
         method: method,
         date: date,
         notes: notes,
+        financialAccountId: resolvedAccountId,
       );
       await transaction.insert('payments', payment.toMap());
+      await _financialAccounts.recordPaymentMovement(
+        payment,
+        transaction: transaction,
+      );
       if (installationId != null) {
         await _outbox.recordPaymentChange(
           transaction,

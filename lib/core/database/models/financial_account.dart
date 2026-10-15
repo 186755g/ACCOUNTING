@@ -31,6 +31,29 @@ class FinancialAccount implements DatabaseEntity {
   final DateTime createdAt;
   final DateTime updatedAt;
 
+  FinancialAccount copyWith({
+    String? id,
+    String? name,
+    FinancialAccountType? type,
+    String? accountNumber,
+    String? notes,
+    int? openingBalanceMinor,
+    bool? isActive,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) =>
+      FinancialAccount(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        type: type ?? this.type,
+        accountNumber: accountNumber ?? this.accountNumber,
+        notes: notes ?? this.notes,
+        openingBalanceMinor: openingBalanceMinor ?? this.openingBalanceMinor,
+        isActive: isActive ?? this.isActive,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? DateTime.now().toUtc(),
+      );
+
   @override
   Map<String, Object?> toMap() => {
         'id': id,
@@ -57,6 +80,64 @@ class FinancialAccount implements DatabaseEntity {
         isActive: requiredBool(map, 'is_active'),
         createdAt: dateFromDatabase(map['created_at']),
         updatedAt: dateFromDatabase(map['updated_at']),
+      );
+}
+
+class AccountTransfer implements DatabaseEntity {
+  AccountTransfer({
+    String? id,
+    required this.sourceAccountId,
+    required this.destinationAccountId,
+    required this.amountMinor,
+    DateTime? date,
+    this.description,
+    this.reference,
+    DateTime? createdAt,
+  })  : id = id ?? newModelId(),
+        date = (date ?? DateTime.now()).toUtc(),
+        createdAt = (createdAt ?? DateTime.now()).toUtc() {
+    if (sourceAccountId.trim().isEmpty) {
+      throw ArgumentError.value(sourceAccountId, 'sourceAccountId');
+    }
+    if (destinationAccountId.trim().isEmpty) {
+      throw ArgumentError.value(destinationAccountId, 'destinationAccountId');
+    }
+    if (amountMinor <= 0) {
+      throw ArgumentError.value(amountMinor, 'amountMinor');
+    }
+  }
+
+  @override
+  final String id;
+  final String sourceAccountId;
+  final String destinationAccountId;
+  final int amountMinor;
+  final DateTime date;
+  final String? description;
+  final String? reference;
+  final DateTime createdAt;
+
+  @override
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'source_account_id': sourceAccountId,
+        'destination_account_id': destinationAccountId,
+        'amount_minor': amountMinor,
+        'date_at': dateToDatabase(date),
+        'description': description,
+        'reference': reference,
+        'created_at': dateToDatabase(createdAt),
+      };
+
+  factory AccountTransfer.fromMap(Map<String, Object?> map) => AccountTransfer(
+        id: requiredString(map, 'id'),
+        sourceAccountId: requiredString(map, 'source_account_id'),
+        destinationAccountId: requiredString(map, 'destination_account_id'),
+        amountMinor: requiredInt(map, 'amount_minor'),
+        date: dateFromDatabase(map['date_at']),
+        description: nullableString(map, 'description'),
+        reference: nullableString(map, 'reference'),
+        createdAt: dateFromDatabase(map['created_at']),
       );
 }
 

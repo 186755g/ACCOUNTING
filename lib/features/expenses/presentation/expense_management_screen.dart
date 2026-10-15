@@ -145,15 +145,20 @@ class _ExpenseManagementScreenState extends State<ExpenseManagementScreen> {
                 );
                 try {
                   await widget.database.transaction((transaction) async {
+                    final financialAccountId = await widget.database.financialAccounts
+                        .resolveAccountIdForPayment(method, database: transaction);
+                    final payment = Payment(
+                      expenseId: expense.id,
+                      amountMinor: expense.amountMinor,
+                      method: method,
+                      date: now,
+                      financialAccountId: financialAccountId,
+                    );
                     await transaction.insert('expenses', expense.toMap());
-                    await transaction.insert(
-                      'payments',
-                      Payment(
-                        expenseId: expense.id,
-                        amountMinor: expense.amountMinor,
-                        method: method,
-                        date: now,
-                      ).toMap(),
+                    await transaction.insert('payments', payment.toMap());
+                    await widget.database.financialAccounts.recordPaymentMovement(
+                      payment,
+                      transaction: transaction,
                     );
                   });
                   if (dialogContext.mounted) {

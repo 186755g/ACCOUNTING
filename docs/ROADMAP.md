@@ -20,11 +20,15 @@
    reported as a successful UI validation.
 6. Add the financial accounts ledger and daily reconciliation layer for cash,
    bank, card, and wallet accounts.
-   Status (2026-10-14): the local SQLite ledger is implemented with separate
+   Status (2026-10-15): the local SQLite ledger is implemented with separate
    `financial_accounts`, `account_movements`, and `account_reconciliations`
-   tables, a repository for balance and movement tracking, and a regression test
-   covering opening balance, debit/credit movements, and daily variance checks.
-   The UI for account management and reconciliation screens is not yet added.
+   tables, a repository for balance and movement tracking, plus a dedicated
+   account-management and daily-reconciliation screen that supports Arabic/RTL,
+   opening balances, deposits, withdrawals, commissions, transfers, and stored
+   variance records. The regression suite covers the core account operations and
+   reconciliation behavior. Payment-linking from existing sales, purchases, and
+   expenses to the financial ledger remains a separate business-rule task and is
+   not auto-created from historical records.
 7. Expand device QA across supported Android versions, RTL/Arabic, accessibility,
    large datasets, restore failures, and notification permission states.
 8. Add operational workflows only when requirements and data semantics are
